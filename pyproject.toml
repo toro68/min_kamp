@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "min_kamp"
+version = "1.0.0"
+authors = [
+    { name="Tor Inge Jøssang", email="tor.inge.jossang@aftenbladet.no" },
+]
+description = "Kampplanlegger for håndball"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "streamlit>=1.24.0",
+    "python-dotenv>=1.0.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.1",
+    "mypy>=1.4.1",
+    "black>=23.7.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "pylint>=2.17.5",
+    "types-python-dateutil>=2.8.19.14",
+    "types-requests>=2.31.0.2",
+    "types-setuptools>=68.2.0.0",
+    "types-urllib3>=1.26.25.14"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/toringe/min_kamp"
+"Bug Tracker" = "https://github.com/toringe/min_kamp/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["min_kamp"]
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.pylint]
+max-line-length = 88
+disable = [
+    "C0111",  # missing-docstring
+    "R0903",  # too-few-public-methods
+]
+ignore = ["CVS"]
+ignore-patterns = ["^\\.#"]
+init-hook = "import sys; sys.path.append('./src')"
+extension-pkg-whitelist = ["pydantic"]
+good-names = ["i", "j", "k", "ex", "Run", "_", "pk", "id"]
+include-naming-hint = true
+max-args = 8
+max-attributes = 8
+max-bool-expr = 5
+max-branches = 12
+max-locals = 15
+max-parents = 7
+max-public-methods = 20
+max-returns = 6
+max-statements = 50
+min-public-methods = 1
