@@ -8,7 +8,6 @@ Se spesielt:
 """
 
 import logging
-import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -25,13 +24,11 @@ class DatabaseHandler:
 
     def __init__(self) -> None:
         """Initialiserer database handler."""
-        self.schema_path = os.getenv("SCHEMA_PATH", "src/min_kamp/database/schema.sql")
-        if not self.schema_path:
-            raise ValueError("SCHEMA_PATH miljøvariabel er ikke satt")
+        current_dir = Path(__file__).parent
+        self.schema_path = str(current_dir / "schema.sql")
 
-        self.db_path = os.getenv("DATABASE_PATH", "data/kampdata.db")
-        if not self.db_path:
-            raise ValueError("DATABASE_PATH miljøvariabel er ikke satt")
+        data_dir = Path.cwd() / "data"
+        self.db_path = str(data_dir / "kampdata.db")
 
         logger.debug(
             f"DatabaseHandler initialiseres med SCHEMA_PATH: {self.schema_path}"
