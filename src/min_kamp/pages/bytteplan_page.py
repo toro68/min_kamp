@@ -5,6 +5,7 @@ Bytteplan-side for kampplanleggeren
 import logging
 from typing import Any, Dict, List
 import pandas as pd
+import io
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -103,6 +104,52 @@ def oppdater_bytteplan(
     return bytteplan
 
 
+def importer_spillertropp_fra_excel(excel_fil: io.BytesIO) -> Dict[str, Dict[str, Any]]:
+    """
+    Importerer spillertropp fra Excel-fil.
+
+    Forventet format:
+    - Første kolonne: Navn (påkrevd)
+    - Andre kolonne: Nummer (valgfritt)
+    - Tredje kolonne: Posisjon (valgfritt)
+    """
+    try:
+        df = pd.read_excel(excel_fil)
+
+        # Sjekk at vi har minst én kolonne med navn
+        if len(df.columns) < 1:
+            raise ValueError("Excel-filen må ha minst én kolonne med spillernavn")
+
+        # Standardiser kolonnenavn
+        df.columns = [str(col).lower().strip() for col in df.columns]
+
+        # Finn navnekolonnen (første kolonne)
+        navn_kolonne = df.columns[0]
+
+        # Opprett spillertropp dictionary
+        spillertropp = {}
+        for idx, row in df.iterrows():
+            spiller_id = f"import_{idx}"  # Generer unik ID
+
+            # Hent data fra rad
+            navn = str(row[navn_kolonne]).strip()
+            nummer = str(row.get("nummer", "")) if "nummer" in df.columns else ""
+            posisjon = str(row.get("posisjon", "")) if "posisjon" in df.columns else ""
+
+            if navn and navn.lower() != "nan":  # Sjekk at navn ikke er tomt eller NaN
+                spillertropp[spiller_id] = {
+                    "navn": navn,
+                    "nummer": nummer,
+                    "posisjon": posisjon,
+                    "er_med": True,  # Standard: alle importerte spillere er med
+                }
+
+        return spillertropp
+
+    except Exception as e:
+        raise ValueError(f"Kunne ikke lese Excel-fil: {str(e)}")
+
+
 def vis_bytteplan_side() -> None:
     """Viser bytteplan-siden."""
     try:
@@ -119,6 +166,48 @@ def vis_bytteplan_side() -> None:
             st.session_state.user_id = 1
 
         st.title("Bytteplan")
+
+        # Legg til Excel-import før innstillinger
+        with st.expander("Importer spillertropp fra Excel", expanded=True):
+            st.write("""
+            Last opp en Excel-fil (.xlsx) med følgende format:
+            - Første kolonne: Navn (påkrevd)
+            - Andre kolonne: Nummer (valgfritt)
+            - Tredje kolonne: Posisjon (valgfritt)
+            """)
+
+            uploaded_file = st.file_uploader(
+                "Velg Excel-fil", type=["xlsx"], key="excel_import"
+            )
+
+            if uploaded_file is not None:
+                try:
+                    importert_tropp = importer_spillertropp_fra_excel(uploaded_file)
+                    if importert_tropp:
+                        st.success(
+                            f"Leste inn {len(importert_tropp)} spillere fra Excel"
+                        )
+
+                        # Oppdater spillerlisten med importerte spillere
+                        spillere = {}
+                        for spiller_id, data in importert_tropp.items():
+                            posisjon = data.get("posisjon", "").strip()
+                            if not posisjon or posisjon not in [
+                                "Keeper",
+                                "Forsvar",
+                                "Midtbane",
+                                "Angrep",
+                            ]:
+                                posisjon = "Midtbane"  # Standard posisjon
+
+                            spillere[spiller_id] = {
+                                "navn": data["navn"],
+                                "posisjon": posisjon,
+                                "er_med": True,
+                            }
+
+                except Exception as e:
+                    st.error(f"Feil ved import av spillertropp: {str(e)}")
 
         # Vis innstillinger for bytteplan
         with st.expander("Innstillinger", expanded=True):
