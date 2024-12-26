@@ -10,11 +10,23 @@ import sys
 if os.path.exists("/mount/src/min_kamp"):
     # På Streamlit Cloud
     project_root = "/mount/src/min_kamp"
-    sys.path.insert(0, project_root)
+    min_kamp_path = os.path.join(project_root, "src", "min_kamp")
+    sys.path.insert(0, os.path.join(project_root, "src"))
+    sys.path.insert(0, min_kamp_path)
 else:
     # Lokalt miljø
     project_root = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.join(project_root, "src"))
+
+# Skriv ut debug-informasjon før import
+print("Debug info før import:")
+print(f"Project root: {project_root}")
+print(f"Python path: {sys.path}")
+print(f"Listing av src-mappe:")
+if os.path.exists(os.path.join(project_root, "src")):
+    print(os.listdir(os.path.join(project_root, "src")))
+else:
+    print("src-mappe finnes ikke")
 
 import streamlit as st
 from min_kamp.db.auth.auth_views import check_auth
@@ -46,6 +58,11 @@ st.write(f"Project root: {project_root}")
 st.write(f"Database path: {database_path}")
 st.write(f"Migrations dir: {migrations_dir}")
 st.write(f"Python path: {sys.path}")
+st.write("Listing av src-mappe:")
+if os.path.exists(os.path.join(project_root, "src")):
+    st.write(os.listdir(os.path.join(project_root, "src")))
+else:
+    st.write("src-mappe finnes ikke")
 
 db_handler = DatabaseHandler(database_path)
 app_handler = AppHandler(db_handler)
