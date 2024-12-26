@@ -1,304 +1,245 @@
 """
-VIKTIG: Sjekk alltid @avhengigheter.md og @system.md før endringer!
-
-Hovedapplikasjon for kampplanleggeren.
-Se spesielt:
-- avhengigheter.md -> Frontend
-- system.md -> Systemarkitektur -> Frontend
+Oppsett side.
 """
 
 import logging
-import io
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, Optional, cast
+from datetime import datetime, date
 
-import pandas as pd
 import streamlit as st
+import pandas as pd
 
+from min_kamp.db.handlers.app_handler import AppHandler
+from min_kamp.db.auth.auth_views import check_auth
+from min_kamp.utils.session_state import safe_get_session_state, set_session_state
 
 logger = logging.getLogger(__name__)
 
-# Gyldige posisjoner
-POSISJONER = ["Keeper", "Forsvar", "Midtbane", "Angrep"]
+
+def get_active_match() -> Optional[int]:
+    """Henter aktiv kamp fra session state."""
+    state = safe_get_session_state("current_kamp_id")
+    if not state or not state.success:
+        return None
+    return cast(int, state.value)
 
 
-def valider_excel_data(df: pd.DataFrame) -> Tuple[bool, List[str]]:
-    """Validerer data fra Excel-fil."""
-    feilmeldinger = []
-
-    # Sjekk at vi har minst én kolonne
-    if len(df.columns) < 1:
-        feilmeldinger.append("Excel-filen må ha minst én kolonne med navn")
-        return False, feilmeldinger
-
-    # Sjekk at første kolonne har data
-    if df[df.columns[0]].isnull().all():
-        feilmeldinger.append("Navnekolonnen kan ikke være tom")
-        return False, feilmeldinger
-
-    return len(feilmeldinger) == 0, feilmeldinger
-
-
-def importer_spillertropp_fra_excel(
-    excel_fil: io.BytesIO,
-) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Importerer spillertropp fra Excel-fil
+def importer_spillere_fra_excel(app_handler: AppHandler, fil: Any) -> None:
+    """Importerer spillere fra Excel-fil.
 
     Args:
-        excel_fil: Excel-filen som skal importeres
-
-    Returns:
-        Dictionary med spillere der nøkkelen er spiller-ID og verdien er en dictionary med følgende nøkler:
-        - navn: Navnet til spilleren
-        - posisjon: Posisjonen til spilleren
-        - er_aktiv: Om spilleren er aktiv
+        app_handler: AppHandler instans
+        fil: Opplastet fil
     """
     try:
-        logger.debug("Starter import av Excel-fil")
-        df = pd.read_excel(excel_fil)
-        logger.debug("DEBUG: Full DataFrame:")
-        logger.debug(df)
+        # Les Excel-fil
+        df = pd.read_excel(fil)
 
-        # Standardiser kolonnenavn
-        df.columns = [str(col).lower().strip() for col in df.columns]
-        logger.debug("Leste Excel-fil med kolonner: %s", list(df.columns))
-        logger.debug("Standardiserte kolonnenavn: %s", list(df.columns))
+        # Sjekk at nødvendige kolonner finnes
+        if "navn" not in df.columns or "posisjon" not in df.columns:
+            st.error("Excel-filen må inneholde kolonnene: navn, posisjon")
+            return
 
-        # Finn navnekolonne
-        navnekolonne = None
-        for kolonne in df.columns:
-            if "navn" in kolonne:
-                navnekolonne = kolonne
-                break
+        # Hent bruker_id fra session state
+        bruker_state = safe_get_session_state("bruker_id")
+        if not bruker_state or not bruker_state.success:
+            st.error("Ingen bruker funnet")
+            return
+        bruker_id = cast(int, bruker_state.value)
 
-        if not navnekolonne:
-            raise ValueError("Fant ikke navnekolonne i Excel-fil")
-
-        logger.debug("DEBUG: Bruker navnekolonne: '%s'", navnekolonne)
-
-        # Opprett spillertropp
-        spillertropp = {}
-        for index, row in df.iterrows():
-            logger.debug("\nDEBUG: Rad %d rådata:", index)
-            for kolonne in df.columns:
-                logger.debug("  %s: '%s'", kolonne, row[kolonne])
-
-            navn = row[navnekolonne]
-            if pd.isna(navn):
+        # Opprett spillere
+        antall_opprettet = 0
+        for _, row in df.iterrows():
+            try:
+                app_handler.spiller_handler.opprett_spiller(
+                    navn=row["navn"], posisjon=row["posisjon"], bruker_id=bruker_id
+                )
+                antall_opprettet += 1
+            except Exception as e:
+                logger.error("Feil ved opprettelse av spiller %s: %s", row["navn"], e)
                 continue
 
-            posisjon = row[st.session_state.posisjonskolonne]
-            if pd.isna(posisjon):
-                posisjon = "Midtbane"
-
-            logger.debug(
-                "DEBUG: Leste posisjon '%s' for %s fra kolonne '%s'",
-                posisjon,
-                navn,
-                st.session_state.posisjonskolonne,
-            )
-            logger.debug("DEBUG: Validerer posisjon '%s' for %s", posisjon, navn)
-
-            spiller_id = f"import_{index}"
-            spillertropp[spiller_id] = {
-                "navn": navn,
-                "posisjon": posisjon,
-                "er_aktiv": True,
-            }
-            logger.debug(
-                "La til spiller: %s (ID: %s, Posisjon: %s)", navn, spiller_id, posisjon
-            )
-
-        logger.info("Importerte %d spillere fra Excel", len(spillertropp))
-        logger.debug("\nDEBUG: Komplett spillertropp:")
-        for spiller_id, spiller in spillertropp.items():
-            logger.debug("  %s: %s", spiller_id, spiller)
-
-        # Importer spillere til databasen
-        spiller_handler = st.session_state.app_handler.spiller_handler
-
-        # Hent eksisterende spillere for debugging
-        with spiller_handler.db_handler.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, navn, aktiv, posisjon FROM spillere")
-            eksisterende = cursor.fetchall()
-            logger.debug("\nDEBUG: Eksisterende spillere i database før import:")
-            for spiller in eksisterende:
-                logger.debug(
-                    "  ID=%s, navn='%s', aktiv=%s, posisjon='%s'",
-                    spiller[0],
-                    spiller[1],
-                    spiller[2],
-                    spiller[3],
-                )
-
-        logger.debug("\nDEBUG: Importerer spillere til database")
-        spillere = [
-            {"navn": spiller["navn"], "posisjon": spiller["posisjon"]}
-            for spiller in spillertropp.values()
-        ]
-        resultater = spiller_handler.importer_spillere(spillere)
-        logger.debug("DEBUG: Import resultater: %s", resultater)
-
-        # Hent spillere etter import for debugging
-        with spiller_handler.db_handler.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, navn, aktiv, posisjon FROM spillere")
-            etter_import = cursor.fetchall()
-            logger.debug("\nDEBUG: Eksisterende spillere i database etter import:")
-            for spiller in etter_import:
-                logger.debug(
-                    "  ID=%s, navn='%s', aktiv=%s, posisjon='%s'",
-                    spiller[0],
-                    spiller[1],
-                    spiller[2],
-                    spiller[3],
-                )
-
-        return spillertropp
+        if antall_opprettet > 0:
+            st.success(f"Opprettet {antall_opprettet} spillere")
+        else:
+            st.warning("Ingen spillere ble opprettet")
 
     except Exception as e:
-        logger.error("Feil ved import av Excel-fil: %s", str(e), exc_info=True)
-        st.error(f"Kunne ikke lese Excel-fil: {str(e)}")
-        return None
+        logger.error("Feil ved import av spillere: %s", e)
+        st.error("Kunne ikke importere spillere")
 
 
-def render_oppsett_page() -> None:
-    """Rendrer oppsett-siden."""
-    st.title("Oppsett")
+def vis_spillerposisjoner(app_handler: AppHandler) -> None:
+    """Viser og lar brukeren endre spillerposisjoner.
 
-    # Last opp Excel-fil
-    uploaded_file = st.file_uploader("Last opp Excel-fil med spillere", type=["xlsx"])
+    Args:
+        app_handler: AppHandler instans
+    """
+    try:
+        bruker_state = safe_get_session_state("bruker_id")
+        if not bruker_state or not bruker_state.success:
+            st.error("Ingen bruker funnet")
+            return
+        bruker_id = cast(int, bruker_state.value)
 
-    if uploaded_file is not None:
-        try:
-            logger.debug(f"Fil lastet opp: {uploaded_file.name}")
+        # Hent alle spillere
+        spillere = app_handler.spiller_handler.hent_spillere(bruker_id)
+        if not spillere:
+            st.info("Ingen spillere funnet")
+            return
 
-            # Les Excel-fil først for å få kolonner
-            df = pd.read_excel(uploaded_file)
+        st.header("Endre spillerposisjoner")
 
-            # La bruker velge posisjonskolonne
-            st.selectbox(
-                "Velg kolonne for posisjon:",
-                options=df.columns,
-                index=2 if len(df.columns) > 2 else 0,
-                key="posisjonskolonne",
-            )
+        posisjoner = ["Keeper", "Forsvar", "Midtbane", "Angrep"]
 
-            if st.button("Bekreft kolonnevalg"):
-                # Reset fil-posisjon før vi sender den videre
-                uploaded_file.seek(0)
-                importert_tropp = importer_spillertropp_fra_excel(uploaded_file)
+        # Vis hver spiller med mulighet for å endre posisjon
+        for spiller in spillere:
+            if not spiller or not isinstance(spiller.id, int):
+                continue
 
-                if importert_tropp:
-                    st.success(f"Importerte {len(importert_tropp)} spillere fra Excel")
+            col1, col2, col3 = st.columns([2, 2, 1])
 
-                    # Vis spillere i kolonner
-                    st.subheader("Velg posisjoner for spillere")
-                    cols = st.columns(3)
-                    col_idx = 0
+            with col1:
+                st.write(spiller.navn)
 
-                    # Initialiser session state for valgte posisjoner hvis ikke allerede gjort
-                    if "valgte_posisjoner" not in st.session_state:
-                        st.session_state.valgte_posisjoner = {}
+            with col2:
+                ny_posisjon = st.selectbox(
+                    "Posisjon",
+                    options=posisjoner,
+                    key=f"pos_{spiller.id}",
+                    index=posisjoner.index(spiller.posisjon),
+                )
 
-                    # Vis spillere i kolonner med posisjon-dropdown
-                    for spiller_id, spiller_data in importert_tropp.items():
-                        with cols[col_idx]:
-                            # Bruk eksisterende posisjon som default hvis den er gyldig
-                            default_pos = (
-                                spiller_data["posisjon"]
-                                if spiller_data["posisjon"] in POSISJONER
-                                else None
-                            )
-
-                            # Vis dropdown for posisjon
-                            valgt_posisjon = st.selectbox(
-                                spiller_data["navn"],
-                                options=POSISJONER,
-                                index=POSISJONER.index(default_pos)
-                                if default_pos
-                                else 0,
-                                key=f"pos_{spiller_id}",
-                            )
-
-                            # Lagre valgt posisjon
-                            st.session_state.valgte_posisjoner[spiller_id] = (
-                                valgt_posisjon
-                            )
-
-                        # Bytt kolonne for neste spiller
-                        col_idx = (col_idx + 1) % 3
-
-                    if st.button("Importer spillere"):
-                        logger.debug("Starter import av spillere til database")
+            with col3:
+                if ny_posisjon != spiller.posisjon:
+                    if st.button("Lagre", key=f"save_{spiller.id}"):
                         try:
-                            # Konverter spillere til format for importer_spillere
-                            spillere_for_import = []
-                            for spiller_id, spiller_data in importert_tropp.items():
-                                navn = spiller_data["navn"]
-                                valgt_posisjon = st.session_state.valgte_posisjoner.get(
-                                    spiller_id
-                                )
-                                if not valgt_posisjon:
-                                    logger.warning(f"Ingen posisjon valgt for {navn}")
-                                    continue
-
-                                logger.debug(
-                                    f"Bruker valgt posisjon for {navn}: {valgt_posisjon}"
-                                )
-                                spillere_for_import.append(
-                                    {"navn": navn, "posisjon": valgt_posisjon}
-                                )
-
-                            # Bruk importer_spillere metoden
-                            if not spillere_for_import:
-                                st.error(
-                                    "Ingen spillere å importere - velg posisjoner først"
-                                )
-                                return
-
-                            resultater = st.session_state.app_handler.spiller_handler.importer_spillere(
-                                spillere_for_import
+                            app_handler.spiller_handler.oppdater_spiller(
+                                spiller_id=spiller.id,
+                                navn=spiller.navn,
+                                posisjon=ny_posisjon,
+                                bruker_id=bruker_id,
                             )
-
-                            antall_importert = sum(1 for r in resultater if r)
-                            feilede_spillere = [
-                                s["navn"]
-                                for s, r in zip(spillere_for_import, resultater)
-                                if not r
-                            ]
-
-                            # Vis resultater
-                            if antall_importert > 0:
-                                st.success(
-                                    f"Importerte {antall_importert} spillere til spillertroppen"
-                                )
-                                logger.info(
-                                    f"Vellykket import av {antall_importert} spillere"
-                                )
-
-                                # Vis link til kamptropp-siden
-                                st.info(
-                                    "For å legge til spillerne i en kamptropp, gå til Kamptropp-siden"
-                                )
-                                if st.button("Gå til Kamptropp"):
-                                    st.session_state.current_page = "kamptropp"
-                                    st.rerun()
-
-                            if feilede_spillere:
-                                feilmelding = f"Kunne ikke importere følgende spillere: {', '.join(feilede_spillere)}"
-                                st.warning(feilmelding)
-                                logger.warning(feilmelding)
-
-                            if antall_importert == 0:
-                                st.error("Ingen spillere ble importert")
-
+                            st.success("Posisjon oppdatert")
+                            st.rerun()
                         except Exception as e:
-                            logger.error(
-                                f"Feil ved lagring av spillere: {str(e)}", exc_info=True
-                            )
-                            st.error(f"Kunne ikke lagre spillere: {str(e)}")
+                            logger.error("Feil ved oppdatering av spiller: %s", e)
+                            st.error("Kunne ikke oppdatere posisjon")
 
-        except Exception as e:
-            logger.error(f"Feil ved import av spillertropp: {str(e)}", exc_info=True)
-            st.error(f"Feil ved import av spillertropp: {str(e)}")
+    except Exception as e:
+        logger.error("Feil ved visning av spillerposisjoner: %s", e)
+        st.error("Kunne ikke vise spillerposisjoner")
+
+
+def vis_oppsett_side(app_handler: AppHandler) -> None:
+    """Rendrer oppsett-siden.
+
+    Args:
+        app_handler: AppHandler instans
+    """
+    try:
+        # Sjekk autentisering
+        auth_handler = app_handler.auth_handler
+        if not check_auth(auth_handler):
+            logger.debug("Bruker er ikke autentisert")
+            return
+
+        st.title("Oppsett")
+
+        # Hent bruker_id fra session state
+        bruker_state = safe_get_session_state("bruker_id")
+        if not bruker_state or not bruker_state.success:
+            st.error("Ingen bruker funnet")
+            return
+        bruker_id = cast(int, bruker_state.value)
+
+        # Hent aktiv kamp
+        active_match = get_active_match()
+        if active_match:
+            kamp_info = app_handler.kamp_handler.hent_kamp(active_match)
+            if kamp_info:
+                kamp_tekst = (
+                    f"Aktiv kamp: {kamp_info['motstander']} - " f"{kamp_info['dato']}"
+                )
+                st.success(kamp_tekst)
+            else:
+                st.warning("Kunne ikke hente info om aktiv kamp")
+
+        # Hent alle kamper
+        kamper = app_handler.kamp_handler.hent_kamper(bruker_id)
+
+        # Lag mapping av kamp-ID til visningsnavn
+        kamp_map = {}
+        for kamp in kamper:
+            kamp_tekst = f"{kamp['motstander']} - {kamp['dato']}"
+            kamp_map[kamp_tekst] = kamp["id"]
+
+        # Vis dropdown for å velge kamp
+        st.subheader("Velg kamp")
+        valgt_kamp = st.selectbox("Velg kamp", ["Velg kamp..."] + list(kamp_map.keys()))
+
+        if valgt_kamp != "Velg kamp...":
+            if st.button("Sett som aktiv kamp"):
+                set_session_state("current_kamp_id", kamp_map[valgt_kamp])
+                st.success(f"Satt {valgt_kamp} som aktiv kamp")
+                st.rerun()
+
+        # Opprett ny kamp
+        st.header("Opprett ny kamp")
+        with st.form("ny_kamp_form"):
+            motstander = st.text_input("Motstander")
+            valgt_dato = st.date_input("Dato", value=datetime.now().date())
+            hjemmebane = st.checkbox("Hjemmekamp", value=True)
+
+            if st.form_submit_button("Opprett kamp"):
+                if not motstander:
+                    st.error("Du må fylle inn motstander")
+                    return
+
+                try:
+                    # Opprett kamp
+                    if not isinstance(valgt_dato, date):
+                        st.error("Ugyldig dato")
+                        return
+
+                    kamp_id = app_handler.kamp_handler.opprett_kamp(
+                        bruker_id=bruker_id,
+                        motstander=motstander,
+                        dato=valgt_dato.strftime("%Y-%m-%d"),
+                        hjemmebane=hjemmebane,
+                    )
+
+                    if kamp_id:
+                        st.success("Kamp opprettet!")
+                        # Sett som aktiv kamp
+                        set_session_state("current_kamp_id", kamp_id)
+                        st.rerun()
+                    else:
+                        st.error("Kunne ikke opprette kamp")
+
+                except Exception as e:
+                    logger.error("Feil ved opprettelse av kamp: %s", e)
+                    st.error("En feil oppstod ved opprettelse av kamp")
+
+        # Last opp Excel-fil med spillere
+        st.header("Importer spillere")
+        st.write(
+            "Last opp en Excel-fil med spillere. "
+            "Filen må inneholde kolonnene: navn, posisjon"
+        )
+
+        fil = st.file_uploader(
+            "Velg Excel-fil", type=["xlsx", "xls"], key="spiller_excel"
+        )
+
+        if fil is not None:
+            if st.button("Importer spillere"):
+                importer_spillere_fra_excel(app_handler, fil)
+
+        # Vis og endre spillerposisjoner
+        st.markdown("---")
+        vis_spillerposisjoner(app_handler)
+
+    except Exception as e:
+        logger.error("Feil ved visning av oppsett-side: %s", e)
+        st.error("Kunne ikke vise oppsett-siden")
