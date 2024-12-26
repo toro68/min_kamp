@@ -2,17 +2,8 @@
 Streamlit app for Min Kamp.
 """
 
-import logging
 import os
 import sys
-import streamlit as st
-
-# Sett opp logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S,%f",
-)
 
 # Legg til prosjektets rot-mappe i Python-stien
 if os.path.exists("/mount/src/min_kamp"):
@@ -25,11 +16,19 @@ else:
 src_path = os.path.join(project_root, "src")
 min_kamp_path = os.path.join(src_path, "min_kamp")
 
-# Legg til stiene i sys.path
-for path in [src_path, min_kamp_path, project_root]:
-    if path not in sys.path:
-        sys.path.insert(0, path)
-        logging.debug(f"La til {path} i Python-stien")
+# Legg til src-mappen i Python-stien
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+import logging
+import streamlit as st
+
+# Sett opp logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S,%f",
+)
 
 # Skriv ut debug-informasjon
 logging.debug("Debug info:")
@@ -63,13 +62,13 @@ st.set_page_config(
 )
 
 # Nå kan vi importere min_kamp-modulene
-from src.min_kamp.db.db_handler import DatabaseHandler
-from src.min_kamp.db.handlers.app_handler import AppHandler
-from src.min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
-from src.min_kamp.db.auth.auth_views import check_auth
-from src.min_kamp.pages.bytteplan_page import vis_bytteplan_side
-from src.min_kamp.pages.components.sidebar import setup_sidebar
-from src.min_kamp.pages.oppsett_page import vis_oppsett_side
+from min_kamp.db.db_handler import DatabaseHandler
+from min_kamp.db.handlers.app_handler import AppHandler
+from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
+from min_kamp.db.auth.auth_views import check_auth
+from min_kamp.pages.bytteplan_page import vis_bytteplan_side
+from min_kamp.pages.components.sidebar import setup_sidebar
+from min_kamp.pages.oppsett_page import vis_oppsett_side
 
 # Initialiser database og handlers
 database_dir = os.path.join(project_root, "database")
