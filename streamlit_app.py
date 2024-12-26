@@ -18,7 +18,7 @@ else:
 existing_paths = set()
 new_sys_path = []
 for path in sys.path:
-    if path not in existing_paths:
+    if path not in existing_paths and path != "streamlit_app.py":
         existing_paths.add(path)
         new_sys_path.append(path)
 sys.path = new_sys_path
