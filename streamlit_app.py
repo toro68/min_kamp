@@ -11,7 +11,6 @@ from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
 from min_kamp.db.auth.auth_views import check_auth, vis_login_side
-from min_kamp.pages.bytteplan_page import vis_bytteplan_side
 from min_kamp.pages.components.sidebar import setup_sidebar
 from min_kamp.pages.oppsett_page import vis_oppsett_side
 
@@ -95,16 +94,10 @@ logging.debug("Sidebar satt opp")
 # Vis hovedsiden
 logging.debug("Setter opp hovedsiden...")
 st.title("Min Kamp")
-tab1, tab2 = st.tabs(["Bytteplan", "Oppsett"])
 
-logging.debug("Rendrer Bytteplan-tab...")
-with tab1:
-    vis_bytteplan_side(app_handler)
-logging.debug("Bytteplan-tab rendret")
-
-logging.debug("Rendrer Oppsett-tab...")
-with tab2:
-    vis_oppsett_side(app_handler)
-logging.debug("Oppsett-tab rendret")
+# Vis oppsett-siden
+logging.debug("Rendrer Oppsett-side...")
+vis_oppsett_side(app_handler)
+logging.debug("Oppsett-side rendret")
 
 logging.debug("App ferdig lastet")
