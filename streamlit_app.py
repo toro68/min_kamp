@@ -10,23 +10,42 @@ import sys
 if os.path.exists("/mount/src/min_kamp"):
     # På Streamlit Cloud
     project_root = "/mount/src/min_kamp"
-    sys.path.insert(0, os.path.join(project_root, "src"))
 else:
     # Lokalt miljø
     project_root = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.join(project_root, "src"))
+
+# Fjern eventuelle duplikate stier fra sys.path
+existing_paths = set()
+new_sys_path = []
+for path in sys.path:
+    if path not in existing_paths:
+        existing_paths.add(path)
+        new_sys_path.append(path)
+sys.path = new_sys_path
+
+# Legg til src-mappen i Python-stien
+src_path = os.path.join(project_root, "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 # Skriv ut debug-informasjon før import
 print("Debug info før import:")
 print(f"Project root: {project_root}")
+print(f"Src path: {src_path}")
 print(f"Python path: {sys.path}")
 print("Listing av src-mappe:")
-if os.path.exists(os.path.join(project_root, "src")):
-    print(os.listdir(os.path.join(project_root, "src")))
+if os.path.exists(src_path):
+    print(os.listdir(src_path))
     print("Listing av min_kamp-mappe:")
-    min_kamp_path = os.path.join(project_root, "src", "min_kamp")
+    min_kamp_path = os.path.join(src_path, "min_kamp")
     if os.path.exists(min_kamp_path):
         print(os.listdir(min_kamp_path))
+        print("Listing av db-mappe:")
+        db_path = os.path.join(min_kamp_path, "db")
+        if os.path.exists(db_path):
+            print(os.listdir(db_path))
+        else:
+            print("db-mappe finnes ikke")
     else:
         print("min_kamp-mappe finnes ikke")
 else:
