@@ -44,6 +44,13 @@ for path in [src_path, min_kamp_path]:
     if os.path.exists(path):
         logging.debug(f"{path} eksisterer")
         logging.debug(f"Innhold: {os.listdir(path)}")
+        if path == min_kamp_path:
+            db_path = os.path.join(path, "db")
+            if os.path.exists(db_path):
+                logging.debug(f"DB path: {db_path}")
+                logging.debug(f"DB innhold: {os.listdir(db_path)}")
+            else:
+                logging.debug("DB path eksisterer ikke")
     else:
         logging.debug(f"{path} eksisterer ikke")
 
@@ -56,18 +63,18 @@ st.set_page_config(
 )
 
 # Nå kan vi importere min_kamp-modulene
-from min_kamp.db.db_handler import DatabaseHandler
-from min_kamp.db.handlers.app_handler import AppHandler
-from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
-from min_kamp.db.auth.auth_views import check_auth
-from min_kamp.pages.bytteplan_page import vis_bytteplan_side
-from min_kamp.pages.components.sidebar import setup_sidebar
-from min_kamp.pages.oppsett_page import vis_oppsett_side
+from src.min_kamp.db.db_handler import DatabaseHandler
+from src.min_kamp.db.handlers.app_handler import AppHandler
+from src.min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
+from src.min_kamp.db.auth.auth_views import check_auth
+from src.min_kamp.pages.bytteplan_page import vis_bytteplan_side
+from src.min_kamp.pages.components.sidebar import setup_sidebar
+from src.min_kamp.pages.oppsett_page import vis_oppsett_side
 
 # Initialiser database og handlers
 database_dir = os.path.join(project_root, "database")
 database_path = os.path.join(database_dir, "kampdata.db")
-migrations_dir = os.path.join(project_root, "src", "min_kamp", "db", "migrations")
+migrations_dir = os.path.join(min_kamp_path, "db", "migrations")
 
 # Opprett database-mappen hvis den ikke eksisterer
 os.makedirs(database_dir, exist_ok=True)
