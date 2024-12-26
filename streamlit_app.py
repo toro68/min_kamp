@@ -5,6 +5,14 @@ Streamlit app for Min Kamp.
 import logging
 import os
 import sys
+import streamlit as st
+from min_kamp.db.db_handler import DatabaseHandler
+from min_kamp.db.handlers.app_handler import AppHandler
+from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
+from min_kamp.db.auth.auth_views import check_auth
+from min_kamp.pages.bytteplan_page import vis_bytteplan_side
+from min_kamp.pages.components.sidebar import setup_sidebar
+from min_kamp.pages.oppsett_page import vis_oppsett_side
 
 # Legg til prosjektets rot-mappe i Python-stien
 if os.path.exists("/mount/src/min_kamp"):
@@ -51,24 +59,12 @@ if os.path.exists(src_path):
 else:
     print("src-mappe finnes ikke")
 
-# Importer streamlit først
-import streamlit as st
-
 # Sett opp logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S,%f",
 )
-
-# Importer min_kamp-moduler
-from min_kamp.db.db_handler import DatabaseHandler
-from min_kamp.db.handlers.app_handler import AppHandler
-from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
-from min_kamp.db.auth.auth_views import check_auth
-from min_kamp.pages.bytteplan_page import vis_bytteplan_side
-from min_kamp.pages.components.sidebar import setup_sidebar
-from min_kamp.pages.oppsett_page import vis_oppsett_side
 
 # Initialiser database og handlers
 database_dir = os.path.join(project_root, "database")
