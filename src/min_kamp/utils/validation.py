@@ -7,13 +7,16 @@ Valideringsverktøy for applikasjonen.
 
 import json
 import logging
-import sqlite3
-from pathlib import Path
-from typing import Any, List, Optional, Type, TypeVar, cast
+from typing import Any, Optional, Type, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+__all__ = [
+    "valider_antall_spillere",
+    "validate_and_convert",
+]
 
 
 def valider_antall_spillere(
@@ -109,56 +112,3 @@ def validate_and_convert(value: Any, target_type: Type[T]) -> Optional[T]:
             exc_info=True,
         )
         return None
-
-
-class ValidationResult:
-    """Resultat av validering"""
-
-    def __init__(
-        self, er_gyldig: bool = True, feilmeldinger: Optional[List[str]] = None
-    ):
-        self.er_gyldig = er_gyldig
-        self.feilmeldinger = feilmeldinger or []
-
-    def __iter__(self):
-        """Gjør det mulig å unpacke resultatet som en tuple"""
-        yield self.er_gyldig
-        yield self.feilmeldinger
-
-
-class SchemaValidator:
-    """Validerer databaseskjema"""
-
-    def __init__(self, db_path: Path, schema_path: Path):
-        """Initialiserer schema validator"""
-        self.db_path = db_path
-        self.schema_path = schema_path
-
-    def validate_database_schema(self, schema: str) -> None:
-        """Validerer et databaseskjema"""
-        if not schema or not isinstance(schema, str):
-            raise ValueError("Ugyldig skjema")
-        # Implementasjon her...
-
-    def validate_database_table(self, table_name: str) -> None:
-        """Validerer en databasetabell"""
-        if not table_name:
-            raise ValueError("Tabellnavn kan ikke være tomt")
-        # Implementasjon her...
-
-    def validate_database(self) -> ValidationResult:
-        """Validerer hele databasen"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
-
-                # Sjekk at databasen eksisterer og er tilgjengelig
-                cursor.execute("SELECT 1")
-
-                # Her kan vi legge til mer validering...
-
-                return ValidationResult(True, [])
-
-        except Exception as e:
-            logger.error(f"Feil ved validering av database: {e}")
-            return ValidationResult(False, [str(e)])

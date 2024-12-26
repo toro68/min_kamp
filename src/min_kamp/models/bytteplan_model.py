@@ -18,10 +18,7 @@ class BytteplanDict(TypedDict):
     kamp_id: int
     spiller_id: int
     periode: int
-    posisjon: str
-    inn_tid: int
-    ut_tid: int
-    spilletid: int
+    er_paa: bool
 
 
 @dataclass
@@ -32,10 +29,7 @@ class Bytteplan:
     kamp_id: int
     spiller_id: int
     periode: int
-    posisjon: str
-    inn_tid: int
-    ut_tid: int
-    spilletid: int
+    er_paa: bool
     opprettet: datetime
     oppdatert: Optional[datetime] = None
 
@@ -43,7 +37,5 @@ class Bytteplan:
 @dataclass
 class Spilletid:
     spiller_id: int
-    kamp_id: str
-    total_spilletid: int
-    antall_perioder_spilt: int
-    gjennomsnitt_per_periode: float = 0.0
+    kamp_id: int
+    minutter: int

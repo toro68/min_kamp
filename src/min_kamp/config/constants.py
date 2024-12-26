@@ -1,50 +1,57 @@
-"""
-VIKTIG: Sjekk alltid @avhengigheter.md og @system.md før endringer!
+"""Application constants."""
 
-Definerer konstanter for applikasjonen.
-Se spesielt:
-- avhengigheter.md -> Config -> Constants
-- system.md -> Config -> Constants
-"""
-
-import logging
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-# Sett opp logging
-logger = logging.getLogger(__name__)
-
-# Last inn miljøvariabler
-load_dotenv()
+# Paths
+ROOT_DIR = Path(__file__).parent.parent.parent.parent
+SRC_DIR = ROOT_DIR / "src"
+DB_DIR = SRC_DIR / "min_kamp" / "db" / "database"
+MIGRATIONS_DIR = SRC_DIR / "min_kamp" / "db" / "migrations"
 
 # Database
-DATABASE_FILE = "kampdata.db"
-DATABASE_PATH = os.getenv("DATABASE_PATH", str(Path("data") / DATABASE_FILE))
-logger.debug(f"DATABASE_PATH satt til: {DATABASE_PATH}")
+DATABASE_NAME = "kampdata.db"
+DATABASE_PATH = DB_DIR / DATABASE_NAME
 
-SCHEMA_FILE = "schema.sql"
-SCHEMA_PATH = os.getenv("SCHEMA_PATH", str(Path("src/min_kamp/database") / SCHEMA_FILE))
-logger.debug(f"SCHEMA_PATH satt til: {SCHEMA_PATH}")
-logger.debug(f"SCHEMA_PATH absolutt sti: {Path(SCHEMA_PATH).absolute()}")
+# Logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
-# Validering
-MIN_SPILLERE = 5
-MAX_SPILLERE = 12
-MIN_PERIODER = 2
-MAX_PERIODER = 8
+# Authentication
+PASSWORD_SALT_LENGTH = 32
+PASSWORD_HASH_ITERATIONS = 100000
+PASSWORD_HASH_LENGTH = 32
 
-# Posisjoner
-POSISJONER = [
-    "Målvakt",
-    "Venstreback",
-    "Midtback",
-    "Høyreback",
-    "Venstreving",
-    "Strek",
-    "Høyreving",
-]
+# Application settings
+DEFAULT_SPILLETID = 60  # minutter
+DEFAULT_PERIODE_LENGDE = 15  # minutter
+DEFAULT_ANTALL_PERIODER = 4
+DEFAULT_SPILLERE_PAA_BANEN = 5
 
-# Sikre at paths eksisterer
-os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+# Session state keys
+SESSION_STATE_KEYS = {
+    # Authentication
+    "initialized": bool,
+    "user_id": int,
+    "username": str,
+    "debug_mode": bool,
+    "indekser_opprettet": bool,
+}
+
+# Error messages
+ERROR_MESSAGES = {
+    "auth": {
+        "invalid_credentials": "Ugyldig brukernavn eller passord",
+        "user_not_found": "Bruker ikke funnet",
+        "user_exists": "Bruker eksisterer allerede",
+        "registration_failed": "Registrering feilet",
+    },
+    "database": {
+        "connection_failed": "Kunne ikke koble til databasen",
+        "query_failed": "Databasespørring feilet",
+        "migration_failed": "Databasemigrering feilet",
+    },
+    "validation": {
+        "required_field": "Dette feltet er påkrevd",
+        "invalid_input": "Ugyldig input",
+    },
+}

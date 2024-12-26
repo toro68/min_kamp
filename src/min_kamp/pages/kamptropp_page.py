@@ -1,419 +1,330 @@
-# kamptropp_page.py
 """
-VIKTIG: Sjekk alltid @avhengigheter.md og @system.md før endringer!
-
-Hovedapplikasjon for kampplanleggeren.
-Se spesielt:
-- avhengigheter.md -> Frontend
-- system.md -> Systemarkitektur -> Frontend
+Kamptropp-side for applikasjonen.
 """
 
 import logging
-from typing import Dict, List, Any
-from collections import defaultdict
-from datetime import date
 import time
+from collections import defaultdict
+from typing import Any, Dict, Optional
 
 import streamlit as st
-from min_kamp.database.auth.auth_views import check_auth
+
+from min_kamp.db.handlers.app_handler import AppHandler
+from min_kamp.db.auth.auth_views import check_auth
+from min_kamp.db.errors import DatabaseError
+from min_kamp.utils.streamlit_utils import get_session_state, set_session_state
 
 logger = logging.getLogger(__name__)
 
 
-@st.cache_data(ttl=60)
-def hent_kamper(_app_handler, user_id: int) -> List[Dict[str, Any]]:
-    """Henter kamper med caching."""
-    return _app_handler.kamp_handler.hent_kamper(user_id)
+def get_typed_handler(handler_name: str) -> Optional[AppHandler]:
+    """Henter typet handler fra session state."""
+    if handler_name != "app_handler":
+        logger.error("Forventet app_handler, fikk %s", handler_name)
+        return None
+
+    handler = get_session_state(handler_name)
+    if not handler:
+        logger.error("Kunne ikke hente handler")
+        return None
+    if not isinstance(handler, AppHandler):
+        logger.error("Forventet AppHandler, fikk %s", type(handler))
+        return None
+    return handler
 
 
-@st.cache_data(ttl=60)
-def hent_kamptropp(
-    _app_handler, kamp_id: int, user_id: int
-) -> Dict[int, Dict[str, Any]]:
-    """Henter kamptropp med caching."""
-    return _app_handler.kamp_handler.hent_kamptropp(kamp_id, user_id)
+def get_typed_session_state(key: str, default: Any = None) -> Any:
+    """Henter typet session state verdi."""
+    value = get_session_state(key)
+    if value is None:
+        return default
+    return value
 
 
-def initialiser_session_state():
-    """Initialiserer session state variabler."""
-    if "app_state" not in st.session_state:
-        st.session_state.app_state = {
-            "current_kamp_id": None,
-            "valgte_spillere": set(),
-            "viser_bekreftelse": False,
-            "lagring_aktiv": False,
-            "sist_oppdatert": None,
-            "melding": None,
-            "melding_type": None,
-            "endret": False,
-            "kamp_options": {},
-            "sist_valgte_kamp": None,
-            "opprinnelige_valgte_spillere": set(),
-        }
+def get_bruker_id() -> int:
+    """Henter bruker ID fra session state."""
+    bruker_id = get_session_state("bruker_id")
+    logger.debug("Bruker ID: %s", bruker_id)
+    if not bruker_id:
+        error_msg = "Ingen bruker-ID funnet"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    return bruker_id
 
 
-def vis_melding():
-    """Viser meldinger til bruker."""
-    if st.session_state.app_state["melding"]:
-        if st.session_state.app_state["melding_type"] == "success":
-            st.success(st.session_state.app_state["melding"])
-        elif st.session_state.app_state["melding_type"] == "error":
-            st.error(st.session_state.app_state["melding"])
-        elif st.session_state.app_state["melding_type"] == "warning":
-            st.warning(st.session_state.app_state["melding"])
-        st.session_state.app_state["melding"] = None
-        st.session_state.app_state["melding_type"] = None
-
-
-def toggle_spiller(spiller_id: int):
-    """Callback for å håndtere spiller-toggle."""
-    key = f"spiller_{spiller_id}"
-    if key in st.session_state:
-        if st.session_state[key]:
-            st.session_state.app_state["valgte_spillere"].add(spiller_id)
-        else:
-            st.session_state.app_state["valgte_spillere"].discard(spiller_id)
-
-        st.session_state.app_state["endret"] = (
-            st.session_state.app_state["valgte_spillere"]
-            != st.session_state.app_state["opprinnelige_valgte_spillere"]
-        )
-
-
-def bytt_kamp():
-    """Callback for å håndtere kampbytte."""
-    if "kamp_velger" in st.session_state:
-        selected_kamp = st.session_state.kamp_velger
-        kamp_id = st.session_state.app_state["kamp_options"][selected_kamp]
-        st.session_state.app_state["current_kamp_id"] = kamp_id
-        st.session_state.app_state["valgte_spillere"] = set()
-        st.session_state.app_state["opprinnelige_valgte_spillere"] = set()
-        st.session_state.app_state["endret"] = False
-
-
-def lagre_kamptropp(app_handler, kamp_id: int, user_id: int):
-    """Lagrer kamptropp."""
+def opprett_indekser(app_handler: AppHandler) -> None:
+    """Oppretter nødvendige indekser for kamptropp-siden."""
     try:
-        if app_handler.kamp_handler.lagre_kamptropp(
-            kamp_id, list(st.session_state.app_state["valgte_spillere"]), user_id
-        ):
-            st.session_state.app_state["melding"] = "Kamptropp lagret!"
-            st.session_state.app_state["melding_type"] = "success"
-            st.session_state.app_state["opprinnelige_valgte_spillere"] = set(
-                st.session_state.app_state["valgte_spillere"]
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+            # Indeks for kamptropp kamp_id og spiller_id
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_kamptropp_kamp_spiller
+                ON kamptropp(kamp_id, spiller_id)
+                """
             )
-            st.session_state.app_state["endret"] = False
-            hent_kamptropp.clear()
-        else:
-            st.session_state.app_state["melding"] = "Kunne ikke lagre kamptropp"
-            st.session_state.app_state["melding_type"] = "error"
+            conn.commit()
     except Exception as e:
-        logger.error("Feil ved lagring av kamptropp: %s", str(e))
-        st.session_state.app_state["melding"] = (
-            "En feil oppstod ved lagring av kamptroppen"
-        )
-        st.session_state.app_state["melding_type"] = "error"
+        logger.error("Feil ved opprettelse av indekser: %s", e)
+        raise DatabaseError("Kunne ikke opprette indekser") from e
 
 
-def vis_spillere(kamptropp: Dict[int, Dict[str, Any]], posisjon: str) -> None:
-    """Viser spillere for en gitt posisjon."""
-    spillere = [
-        (spiller_id, data)
-        for spiller_id, data in kamptropp.items()
-        if data["posisjon"] == posisjon
-    ]
-    logger.debug(f"Viser spillere for posisjon {posisjon}")
-    logger.debug(f"Antall spillere funnet: {len(spillere)}")
-    logger.debug(
-        f"Spillere i denne posisjonen: {[(data['navn'], data['posisjon']) for _, data in spillere]}"
-    )
+def opprett_spiller(
+    app_handler: AppHandler, bruker_id: int, navn: str, posisjon: str
+) -> Optional[int]:
+    """Opprett en ny spiller.
 
-    if spillere:
-        st.write(f"**{posisjon}:**")
-        for spiller_id, data in spillere:
-            col1, col2, col3 = st.columns([3, 1, 1])
+    Args:
+        app_handler: AppHandler instans
+        bruker_id: ID til brukeren som oppretter spilleren
+        navn: Navn på spilleren
+        posisjon: Posisjon til spilleren
 
-            with col1:
-                key = f"spiller_{spiller_id}"
-                er_valgt = spiller_id in st.session_state.app_state["valgte_spillere"]
-
-                if st.checkbox(data["navn"], value=er_valgt, key=key):
-                    logger.debug(
-                        f"Legger til spiller {data['navn']} (ID: {spiller_id})"
-                    )
-                    st.session_state.app_state["valgte_spillere"].add(spiller_id)
-                else:
-                    logger.debug(f"Fjerner spiller {data['navn']} (ID: {spiller_id})")
-                    st.session_state.app_state["valgte_spillere"].discard(spiller_id)
-
-            with col2:
-                ny_posisjon = st.selectbox(
-                    "Posisjon",
-                    ["Keeper", "Forsvar", "Midtbane", "Angrep"],
-                    index=["Keeper", "Forsvar", "Midtbane", "Angrep"].index(
-                        data["posisjon"]
-                    ),
-                    key=f"posisjon_{spiller_id}",
-                    label_visibility="collapsed",
-                )
-
-                if ny_posisjon != data["posisjon"]:
-                    logger.debug(
-                        f"Endrer posisjon for {data['navn']} fra {data['posisjon']} til {ny_posisjon}"
-                    )
-                    try:
-                        st.session_state.app_handler.spiller_handler.endre_spiller_posisjon(
-                            spiller_id, ny_posisjon
-                        )
-                        hent_kamptropp.clear()
-                        time.sleep(0.1)
-                        st.rerun()
-                    except Exception as e:
-                        logger.error(f"Feil ved endring av posisjon: {str(e)}")
-                        st.error(f"Kunne ikke endre posisjon: {str(e)}")
-
-            with col3:
-                if st.button(
-                    "🗑️",
-                    key=f"slett_{spiller_id}",
-                    help=f"Slett {data['navn']}",
-                    type="secondary",
-                ):
-                    logger.debug(f"Sletter spiller {data['navn']} (ID: {spiller_id})")
-                    try:
-                        if st.session_state.app_handler.spiller_handler.slett_spiller(
-                            spiller_id
-                        ):
-                            st.session_state.app_state["valgte_spillere"].discard(
-                                spiller_id
-                            )
-                            # Tøm cache for å tvinge oppdatering av kamptropp
-                            hent_kamptropp.clear()
-                            time.sleep(
-                                0.1
-                            )  # Kort pause for å la databasen oppdatere seg
-                            st.rerun()
-                        else:
-                            st.error(f"Kunne ikke slette {data['navn']}")
-                    except Exception as e:
-                        logger.error(f"Feil ved sletting av spiller: {str(e)}")
-                        st.error(f"Kunne ikke slette spiller: {str(e)}")
-
-        logger.debug(
-            f"Oppdatert valgte_spillere: {st.session_state.app_state['valgte_spillere']}"
-        )
-        logger.debug(
-            f"Opprinnelige valgte_spillere: {st.session_state.app_state['opprinnelige_valgte_spillere']}"
-        )
-
-        st.session_state.app_state["endret"] = (
-            st.session_state.app_state["valgte_spillere"]
-            != st.session_state.app_state["opprinnelige_valgte_spillere"]
-        )
-        logger.debug(f"Endret: {st.session_state.app_state['endret']}")
-
-
-def vis_valgt_tropp(kamptropp: Dict[int, Dict[str, Any]], valgte_spillere: set) -> None:
-    """Viser oversikt over valgt tropp."""
-    st.write("**Valgt tropp:**")
-
-    valgte_by_posisjon = defaultdict(list)
-    for spiller_id in valgte_spillere:
-        if spiller_id in kamptropp:
-            data = kamptropp[spiller_id]
-            valgte_by_posisjon[data["posisjon"]].append(data["navn"])
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.write(f"Keepere: {len(valgte_by_posisjon['Keeper'])}")
-    with col2:
-        st.write(f"Forsvar: {len(valgte_by_posisjon['Forsvar'])}")
-    with col3:
-        st.write(f"Midtbane: {len(valgte_by_posisjon['Midtbane'])}")
-    with col4:
-        st.write(f"Angrep: {len(valgte_by_posisjon['Angrep'])}")
-
-    for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
-        if valgte_by_posisjon[posisjon]:
-            st.write(f"**{posisjon}:** {', '.join(valgte_by_posisjon[posisjon])}")
-
-
-def vis_kamptropp_side() -> None:
-    """Viser kamptropp-siden"""
+    Returns:
+        Optional[int]: ID til den nye spilleren hvis vellykket
+    """
     try:
-        # Hent handlers fra session state
-        auth_handler = st.session_state.auth_handler
-        app_handler = st.session_state.app_handler
+        spiller_id = app_handler.spiller_handler.opprett_spiller(
+            bruker_id=bruker_id, navn=navn, posisjon=posisjon
+        )
+        return spiller_id
+    except Exception as e:
+        logger.error("Feil ved opprettelse av spiller: %s", e)
+        return None
 
-        # Sjekk autentisering
+
+def vis_kamptropp_side(app_handler: AppHandler) -> None:
+    """Viser kamptropp-siden.
+
+    Args:
+        app_handler: AppHandler instans
+    """
+    try:
+        auth_handler = app_handler.auth_handler
         if not check_auth(auth_handler):
             return
 
-        st.title("Velg kamptropp")
+        st.title("Kamptropp")
 
-        # Initialiser session state
-        initialiser_session_state()
-
-        # Vis eventuelle meldinger
-        vis_melding()
-
-        # Vis eksisterende kamper
-        kamper = hent_kamper(app_handler, st.session_state.user_id)
-        logger.debug(f"Hentet {len(kamper)} kamper")
-
-        if kamper:
-            # Lag en mapping mellom visningsnavn og kamp-ID
-            kamp_options = {
-                f"{k['motstander']} ({k['dato']})": k["kamp_id"] for k in kamper
-            }
-            st.session_state.app_state["kamp_options"] = kamp_options
-            logger.debug(f"Kamp options: {kamp_options}")
-
-            # Finn gjeldende kamp
-            current_kamp_id = st.session_state.app_state["current_kamp_id"]
-            if not current_kamp_id:
-                current_kamp_id = next(iter(kamp_options.values()))
-                st.session_state.app_state["current_kamp_id"] = current_kamp_id
-            logger.debug(f"Gjeldende kamp ID: {current_kamp_id}")
-
-            current_kamp_name = next(
-                (name for name, kid in kamp_options.items() if kid == current_kamp_id),
-                None,
-            )
-            logger.debug(f"Gjeldende kamp navn: {current_kamp_name}")
-
-            # Vis nedtrekksmeny for å velge kamp
-            selected_kamp = st.selectbox(
-                "Velg kamp:",
-                options=list(kamp_options.keys()),
-                index=list(kamp_options.keys()).index(current_kamp_name)
-                if current_kamp_name
-                else 0,
-                key="kamp_velger",
-                on_change=bytt_kamp,
+        # Opprett ny spiller
+        with st.expander("Opprett ny spiller"):
+            spiller_navn = st.text_input("Navn", key="spiller_navn")
+            spiller_posisjon = st.selectbox(
+                "Posisjon",
+                ["Keeper", "Forsvar", "Midtbane", "Angrep"],
+                key="spiller_posisjon",
             )
 
-            if selected_kamp:
-                kamp_id = kamp_options[selected_kamp]
-                logger.debug(f"Valgt kamp ID: {kamp_id}")
-                kamptropp = hent_kamptropp(
-                    app_handler, kamp_id, st.session_state.user_id
-                )
-                logger.debug(f"Hentet kamptropp med {len(kamptropp)} spillere")
-                logger.debug("Full kamptropp:")
-                for spiller_id, data in kamptropp.items():
-                    logger.debug(f"  Spiller {spiller_id}: {data}")
-
-                # Initialiser valgte spillere fra databasen hvis ikke allerede gjort
-                if not st.session_state.app_state["valgte_spillere"]:
-                    valgte_spillere = {
-                        spiller_id
-                        for spiller_id, data in kamptropp.items()
-                        if data["er_med"]
-                    }
-                    st.session_state.app_state["valgte_spillere"] = valgte_spillere
-                    st.session_state.app_state["opprinnelige_valgte_spillere"] = set(
-                        valgte_spillere
-                    )
-                    logger.debug(f"Initialiserte valgte spillere: {valgte_spillere}")
-
-                st.write("Velg spillere til kamptroppen:")
-
-                # Vis spillere gruppert etter posisjon
-                for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
-                    vis_spillere(kamptropp, posisjon)
-
-                antall_valgt = len(st.session_state.app_state["valgte_spillere"])
-                logger.debug(f"Antall valgte spillere: {antall_valgt}")
-                st.write(f"Antall valgte spillere: {antall_valgt}")
-
-                # Vis oversikt over valgt tropp
-                if st.session_state.app_state["valgte_spillere"]:
-                    st.divider()
-                    vis_valgt_tropp(
-                        kamptropp, st.session_state.app_state["valgte_spillere"]
-                    )
-
-                # Lagre-form
-                with st.form("lagre_form"):
-                    logger.debug("Viser lagre-form")
-                    if antall_valgt >= 7:
-                        logger.debug("Nok spillere valgt, viser submit-knapp")
-                        if st.form_submit_button(
-                            "Lagre kamptropp",
-                            disabled=not st.session_state.app_state["endret"],
-                        ):
-                            logger.debug("Lagre-knapp trykket")
-                            lagre_kamptropp(
-                                app_handler, kamp_id, st.session_state.user_id
-                            )
-                    else:
-                        logger.debug("For få spillere valgt, viser advarsel")
-                        st.warning(
-                            "Du må velge minst 7 spillere for å lagre kamptroppen"
+            if st.button("Opprett spiller"):
+                if spiller_navn:
+                    try:
+                        bruker_id = get_bruker_id()
+                        spiller_id = opprett_spiller(
+                            app_handler, bruker_id, spiller_navn, spiller_posisjon
                         )
-
-        else:
-            logger.debug("Ingen kamper funnet, viser skjema for å opprette ny kamp")
-            # Legg til ny kamp
-            st.info("Du må opprette en kamp før du kan velge spillere til kamptroppen.")
-            with st.form("ny_kamp_form"):
-                st.write("### Opprett ny kamp")
-                motstander = st.text_input("Motstander")
-                valgt_dato = st.date_input("Dato")
-                hjemmebane = st.checkbox("Hjemmekamp", value=True)
-
-                if st.form_submit_button("Opprett kamp"):
-                    logger.debug(
-                        f"Forsøker å opprette kamp: {motstander} ({valgt_dato})"
-                    )
-                    if motstander:
-                        try:
-                            if not isinstance(valgt_dato, (date, tuple)):
-                                st.error("Ugyldig dato")
-                                return
-
-                            # Håndter at st.date_input kan returnere en tuple
-                            if isinstance(valgt_dato, tuple) and not valgt_dato:
-                                st.error("Ugyldig dato")
-                                return
-
-                            dato_str = (
-                                valgt_dato.strftime("%Y-%m-%d")
-                                if isinstance(valgt_dato, date)
-                                else valgt_dato[0].strftime("%Y-%m-%d")
+                        if spiller_id:
+                            logger.info(
+                                "Opprettet spiller %s: %s", spiller_id, spiller_navn
                             )
+                            st.success("Spiller opprettet!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            error_msg = "Kunne ikke opprette spiller"
+                            logger.error(error_msg)
+                            st.error(error_msg)
+                    except Exception as e:
+                        error_msg = "Feil ved opprettelse av spiller"
+                        logger.error("%s: %s", error_msg, e)
+                        st.error(error_msg)
+                else:
+                    logger.warning("Mangler spillernavn")
+                    st.error("Du må fylle inn navn på spilleren")
 
-                            kamp_id = app_handler.kamp_handler.registrer_kamp(
-                                dato=dato_str,
-                                motstander=motstander,
-                                hjemmebane=hjemmebane,
-                                user_id=st.session_state.user_id,
-                            )
-                            if kamp_id:
-                                logger.debug(f"Opprettet kamp med ID: {kamp_id}")
-                                st.session_state.app_state["current_kamp_id"] = kamp_id
-                                st.session_state.app_state["valgte_spillere"] = set()
-                                st.session_state.app_state[
-                                    "opprinnelige_valgte_spillere"
-                                ] = set()
-                                st.session_state.app_state["melding"] = (
-                                    f"Kamp mot {motstander} opprettet!"
-                                )
-                                st.session_state.app_state["melding_type"] = "success"
-                                st.session_state.app_state["endret"] = False
-                                hent_kamper.clear()
-                                st.rerun()
-                            else:
-                                logger.error("Kunne ikke opprette kamp")
-                                st.error("Kunne ikke opprette kamp")
-                        except Exception as e:
-                            logger.error(f"Feil ved opprettelse av kamp: {str(e)}")
-                            st.error(f"Kunne ikke opprette kamp: {str(e)}")
-                    else:
-                        logger.warning("Forsøkte å opprette kamp uten motstander")
-                        st.error("Fyll inn motstander")
+        # Hent aktiv kamp
+        kamp_id = get_typed_session_state("current_kamp_id")
+        if not kamp_id:
+            st.warning("Ingen aktiv kamp valgt")
+            if st.button("Gå til oppsett for å velge kamp"):
+                st.session_state.selected_page = "oppsett"
+                st.rerun()
+            return
+
+        # Hent kamptropp
+        bruker_id = get_bruker_id()
+        kamptropp = app_handler.kamp_handler.hent_kamptropp(
+            kamp_id=kamp_id, bruker_id=bruker_id
+        )
+
+        # Vis spillere etter posisjon
+        for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
+            vis_spillere(kamptropp, posisjon, app_handler, kamp_id)
+
+        # Vis oversikt over valgt tropp
+        valgte_spillere = set()
+        for spillere in kamptropp["spillere"].values():
+            for spiller in spillere:
+                if spiller["er_med"]:
+                    valgte_spillere.add(spiller["id"])
+        vis_valgt_tropp(kamptropp, valgte_spillere)
 
     except Exception as e:
-        logger.error(f"Feil ved visning av kamptropp-side: {str(e)}", exc_info=True)
-        st.error("En feil oppstod ved visning av kamptropp-siden")
+        error_msg = "En feil oppstod ved visning av kamptropp-siden"
+        logger.error("Feil ved visning av kamptropp-side: %s", e)
+        st.error(error_msg)
+
+
+def vis_spillere(
+    kamptropp: Dict[str, Any], posisjon: str, app_handler: AppHandler, kamp_id: int
+) -> None:
+    """Viser spillere for en posisjon.
+
+    Args:
+        kamptropp: Kamptropp data
+        posisjon: Posisjon å vise spillere for
+        app_handler: AppHandler instans
+        kamp_id: ID til aktiv kamp
+    """
+    try:
+        spillere = kamptropp["spillere"][posisjon]
+        if not spillere:
+            return
+
+        st.write(f"### {posisjon}")
+
+        # Vis spillere i en tabell
+        cols = st.columns(4)
+        for i, spiller in enumerate(spillere):
+            col = cols[i % 4]
+            with col:
+                if st.checkbox(
+                    spiller["navn"],
+                    value=spiller["er_med"],
+                    key=f"spiller_{spiller['id']}",
+                ):
+                    # Spiller er valgt - oppdater i database
+                    if not spiller["er_med"]:
+                        app_handler.kamp_handler.oppdater_spiller_status(
+                            kamp_id=kamp_id, spiller_id=spiller["id"], er_med=True
+                        )
+                        st.rerun()
+                else:
+                    # Spiller er ikke valgt - oppdater i database
+                    if spiller["er_med"]:
+                        app_handler.kamp_handler.oppdater_spiller_status(
+                            kamp_id=kamp_id, spiller_id=spiller["id"], er_med=False
+                        )
+                        st.rerun()
+
+    except Exception as e:
+        logger.error("Feil ved visning av spillere for %s: %s", posisjon, e)
+
+
+def vis_valgt_tropp(kamptropp: Dict[str, Any], valgte_spillere: set) -> None:
+    """Viser oversikt over valgt tropp.
+
+    Args:
+        kamptropp: Kamptropp data
+        valgte_spillere: Set med ID-er til valgte spillere
+    """
+    try:
+        st.write("### Valgt tropp")
+
+        # Finn valgte spillere
+        alle_spillere = []
+        for spillere in kamptropp["spillere"].values():
+            alle_spillere.extend(spillere)
+
+        valgte = [s for s in alle_spillere if s["id"] in valgte_spillere]
+
+        # Vis valgte spillere i en tabell
+        if valgte:
+            data = []
+            for spiller in valgte:
+                data.append({"Navn": spiller["navn"], "Posisjon": spiller["posisjon"]})
+            st.table(data)
+        else:
+            st.info("Ingen spillere valgt")
+
+    except Exception as e:
+        logger.error("Feil ved visning av valgt tropp: %s", e)
+
+
+def hent_kamptropp(
+    app_handler: AppHandler, kamp_id: int, bruker_id: int
+) -> Dict[str, Any]:
+    """Henter kamptropp for en kamp.
+
+    Args:
+        app_handler: AppHandler instans
+        kamp_id: ID til kampen
+        bruker_id: ID til brukeren
+
+    Returns:
+        Dict[str, Any]: Kamptropp data
+    """
+    try:
+        # Hent alle spillere
+        spillere = app_handler.spiller_handler.hent_spillere(bruker_id)
+
+        # Hent valgte spillere for kampen
+        valgte_spillere = app_handler.kamp_handler.hent_kamptropp(
+            kamp_id=kamp_id, bruker_id=bruker_id
+        )
+
+        # Organiser spillere etter posisjon
+        spillere_etter_posisjon = defaultdict(list)
+        for spiller in spillere:
+            spillere_etter_posisjon[spiller.posisjon].append(
+                {
+                    "id": spiller.id,
+                    "navn": spiller.navn,
+                    "posisjon": spiller.posisjon,
+                    "valgt": spiller.id in valgte_spillere,
+                }
+            )
+
+        return {"spillere": spillere_etter_posisjon, "valgte_spillere": valgte_spillere}
+
+    except Exception as e:
+        logger.error("Feil ved henting av kamptropp: %s", e)
+        return {"spillere": defaultdict(list), "valgte_spillere": []}
+
+
+def lagre_kamptropp(app_handler: AppHandler, kamp_id: int, bruker_id: int) -> bool:
+    """Lagrer kamptropp.
+
+    Args:
+        app_handler: AppHandler instans
+        kamp_id: ID til kampen
+        bruker_id: ID til brukeren
+
+    Returns:
+        bool: True hvis lagringen var vellykket
+    """
+    try:
+        app_state = get_typed_session_state("app_state", {})
+        valgte = app_state.get("valgte_spillere", [])
+        spillere = [{"spiller_id": spiller_id} for spiller_id in valgte]
+
+        if app_handler.kamp_handler.oppdater_kamptropp(kamp_id, spillere):
+            app_state["melding"] = "Kamptropp lagret!"
+            app_state["melding_type"] = "success"
+            app_state["opprinnelige_valgte_spillere"] = list(valgte)
+            app_state["endret"] = False
+            set_session_state("app_state", app_state)
+            return True
+        else:
+            app_state["melding"] = "Kunne ikke lagre kamptropp"
+            app_state["melding_type"] = "error"
+            set_session_state("app_state", app_state)
+            return False
+    except Exception as e:
+        logger.error("Feil ved lagring av kamptropp: %s", e)
+        app_state = get_typed_session_state("app_state", {})
+        error_msg = "En feil oppstod ved lagring av kamptroppen"
+        app_state["melding"] = error_msg
+        app_state["melding_type"] = "error"
+        set_session_state("app_state", app_state)
+        return False

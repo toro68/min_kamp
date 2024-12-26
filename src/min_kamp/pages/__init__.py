@@ -1,14 +1,10 @@
 """
-VIKTIG: Sjekk alltid @avhengigheter.md og @system.md før endringer!
-
-Eksporterer sider.
-Se spesielt:
-- avhengigheter.md -> Frontend -> Pages
-- system.md -> Frontend -> Pages
+Pages pakke.
 """
 
-from min_kamp.pages.oppsett_page import render_oppsett_page
+from min_kamp.pages.login_page import vis_login_side
+from min_kamp.pages.kamp_page import vis_kamp_side
+from min_kamp.pages.kamptropp_page import vis_kamptropp_side
+from min_kamp.pages.oppsett_page import vis_oppsett_side
 
-__all__ = [
-    "render_oppsett_page",
-]
+__all__ = ["vis_login_side", "vis_kamp_side", "vis_kamptropp_side", "vis_oppsett_side"]

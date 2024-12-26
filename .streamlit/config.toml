@@ -13,3 +13,7 @@ gatherUsageStats = false
 
 [logger]
 level = "info"
+
+[runner]
+# Legger til src-mappen i Python-stien
+pythonPath = "venv/bin/python"

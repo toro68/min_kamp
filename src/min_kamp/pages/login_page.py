@@ -4,46 +4,27 @@ Login-side for applikasjonen
 
 import logging
 import streamlit as st
+from min_kamp.db.auth.auth_views import vis_login_side as vis_login_skjema
+from min_kamp.db.handlers.app_handler import AppHandler
 
 logger = logging.getLogger(__name__)
 
 
-def vis_login_side() -> None:
-    """Viser login-siden"""
+def vis_login_side(app_handler: AppHandler) -> None:
+    """Viser login-siden.
+
+    Args:
+        app_handler: AppHandler instans
+    """
     try:
-        st.title("Logg inn")
+        if not isinstance(app_handler, AppHandler):
+            logger.error("Ugyldig app_handler type: %s", type(app_handler))
+            st.error("En feil oppstod ved lasting av login-siden")
+            return
 
-        # Hent auth_handler fra session state
-        auth_handler = st.session_state.db_handler.auth_handler
-
-        # Login form
-        with st.form("login_form"):
-            username = st.text_input("Brukernavn")
-            password = st.text_input("Passord", type="password")
-
-            submitted = st.form_submit_button("Logg inn")
-
-            if submitted:
-                if username and password:
-                    if auth_handler.verify_credentials(username, password):
-                        # Sett autentisert status
-                        st.session_state.authenticated = True
-                        st.session_state.username = username
-                        st.session_state.user_id = auth_handler.get_user_id(username)
-                        st.session_state.current_page = "oppsett"
-                        st.rerun()
-                    else:
-                        st.error("Feil brukernavn eller passord")
-                else:
-                    st.error("Vennligst fyll inn både brukernavn og passord")
-
-        # Registreringslenke
-        st.write("---")
-        st.write("Har du ikke en bruker?")
-        if st.button("Registrer ny bruker"):
-            st.session_state.current_page = "registrer"
-            st.rerun()
+        # Vis login-side med app_handler
+        vis_login_skjema(app_handler)
 
     except Exception as e:
-        logger.error(f"Feil ved visning av login-side: {e}", exc_info=True)
-        st.error("Kunne ikke vise login-siden. Vennligst prøv igjen senere.")
+        logger.error("Feil ved visning av login-side: %s", e)
+        st.error("En feil oppstod ved lasting av login-siden")

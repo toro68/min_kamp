@@ -1,32 +1,19 @@
 """
-VIKTIG: Sjekk alltid @avhengigheter.md og @system.md før endringer!
-
-Hovedmodul for Min Kamp applikasjonen.
-Se spesielt:
-- avhengigheter.md
-- system.md
+Min Kamp package.
 """
 
-from min_kamp.database import (
-    DatabaseHandler,
+from min_kamp.db import (
     AppHandler,
     AuthHandler,
-    BaseHandler,
-    BytteplanHandler,
     KampHandler,
     SpillerHandler,
-    StateHandler,
+    get_db_path,
 )
 
-__version__ = "1.0.0"
-
 __all__ = [
-    "DatabaseHandler",
     "AppHandler",
     "AuthHandler",
-    "BaseHandler",
-    "BytteplanHandler",
     "KampHandler",
     "SpillerHandler",
-    "StateHandler",
+    "get_db_path",
 ]
