@@ -26,14 +26,17 @@ logging.basicConfig(
 )
 
 # Initialiser database og handlers
-database_path = os.path.join("database", "kampdata.db")
-migrasjoner_mappe = os.path.join("src", "min_kamp", "db", "migrations")
+database_path = os.path.join(project_root, "database", "kampdata.db")
+migrations_dir = os.path.join(project_root, "src", "min_kamp", "db", "migrations")
+
+# Opprett database-mappen hvis den ikke eksisterer
+os.makedirs(os.path.dirname(database_path), exist_ok=True)
 
 db_handler = DatabaseHandler(database_path)
 app_handler = AppHandler(db_handler)
 
 # Kjør migrasjoner
-kjor_migrasjoner(db_handler, migrasjoner_mappe)
+kjor_migrasjoner(db_handler, migrations_dir)
 
 # Sett opp Streamlit-siden
 st.set_page_config(
