@@ -6,6 +6,32 @@ import logging
 import os
 import sys
 import streamlit as st
+
+# Sett opp Streamlit-siden (må være første Streamlit-kommando)
+st.set_page_config(
+    page_title="Min Kamp",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Legg til prosjektets rot-mappe i Python-stien
+project_root = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(project_root, "src")
+
+# Fjern eventuelle duplikate stier og legg til src-mappen først
+sys.path = list(dict.fromkeys([src_path] + sys.path))
+
+# Skriv ut debug-informasjon
+st.write("Debug info:")
+st.write(f"Project root: {project_root}")
+st.write(f"Src path: {src_path}")
+st.write(f"Python path: {sys.path}")
+st.write("Listing av src-mappe:")
+if os.path.exists(src_path):
+    st.write(os.listdir(src_path))
+
+# Nå kan vi importere min_kamp-modulene
 from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
@@ -13,51 +39,6 @@ from min_kamp.db.auth.auth_views import check_auth
 from min_kamp.pages.bytteplan_page import vis_bytteplan_side
 from min_kamp.pages.components.sidebar import setup_sidebar
 from min_kamp.pages.oppsett_page import vis_oppsett_side
-
-# Legg til prosjektets rot-mappe i Python-stien
-if os.path.exists("/mount/src/min_kamp"):
-    # På Streamlit Cloud
-    project_root = "/mount/src/min_kamp"
-else:
-    # Lokalt miljø
-    project_root = os.path.dirname(os.path.abspath(__file__))
-
-# Fjern eventuelle duplikate stier fra sys.path
-existing_paths = set()
-new_sys_path = []
-for path in sys.path:
-    if path not in existing_paths and path != "streamlit_app.py":
-        existing_paths.add(path)
-        new_sys_path.append(path)
-sys.path = new_sys_path
-
-# Legg til src-mappen i Python-stien
-src_path = os.path.join(project_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-# Skriv ut debug-informasjon før import
-print("Debug info før import:")
-print(f"Project root: {project_root}")
-print(f"Src path: {src_path}")
-print(f"Python path: {sys.path}")
-print("Listing av src-mappe:")
-if os.path.exists(src_path):
-    print(os.listdir(src_path))
-    print("Listing av min_kamp-mappe:")
-    min_kamp_path = os.path.join(src_path, "min_kamp")
-    if os.path.exists(min_kamp_path):
-        print(os.listdir(min_kamp_path))
-        print("Listing av db-mappe:")
-        db_path = os.path.join(min_kamp_path, "db")
-        if os.path.exists(db_path):
-            print(os.listdir(db_path))
-        else:
-            print("db-mappe finnes ikke")
-    else:
-        print("min_kamp-mappe finnes ikke")
-else:
-    print("src-mappe finnes ikke")
 
 # Sett opp logging
 logging.basicConfig(
@@ -69,38 +50,16 @@ logging.basicConfig(
 # Initialiser database og handlers
 database_dir = os.path.join(project_root, "database")
 database_path = os.path.join(database_dir, "kampdata.db")
-migrations_dir = os.path.join(
-    project_root, "src", "min_kamp", "db", "migrations"
-)
+migrations_dir = os.path.join(project_root, "src", "min_kamp", "db", "migrations")
 
 # Opprett database-mappen hvis den ikke eksisterer
 os.makedirs(database_dir, exist_ok=True)
-
-# Skriv ut debug-informasjon
-st.write("Debug info:")
-st.write(f"Project root: {project_root}")
-st.write(f"Database path: {database_path}")
-st.write(f"Migrations dir: {migrations_dir}")
-st.write(f"Python path: {sys.path}")
-st.write("Listing av src-mappe:")
-if os.path.exists(os.path.join(project_root, "src")):
-    st.write(os.listdir(os.path.join(project_root, "src")))
-else:
-    st.write("src-mappe finnes ikke")
 
 db_handler = DatabaseHandler(database_path)
 app_handler = AppHandler(db_handler)
 
 # Kjør migrasjoner
 kjor_migrasjoner(db_handler, migrations_dir)
-
-# Sett opp Streamlit-siden
-st.set_page_config(
-    page_title="Min Kamp",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # Sjekk autentisering
 if not check_auth(app_handler.auth_handler):
