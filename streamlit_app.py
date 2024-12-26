@@ -11,8 +11,11 @@ from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
 from min_kamp.db.auth.auth_views import check_auth, vis_login_side
+from min_kamp.pages.bytteplan_page import vis_bytteplan_side
 from min_kamp.pages.components.sidebar import setup_sidebar
 from min_kamp.pages.oppsett_page import vis_oppsett_side
+from min_kamp.pages.kamptropp_page import vis_kamptropp_side
+from min_kamp.pages.kamp_page import vis_kamp_side
 
 # Sett opp logging
 logging.basicConfig(level=logging.DEBUG)
@@ -95,9 +98,18 @@ logging.debug("Sidebar satt opp")
 logging.debug("Setter opp hovedsiden...")
 st.title("Min Kamp")
 
-# Vis oppsett-siden
-logging.debug("Rendrer Oppsett-side...")
-vis_oppsett_side(app_handler)
-logging.debug("Oppsett-side rendret")
+# Vis valgt side basert på session state
+selected_page = st.session_state.get("selected_page", "oppsett")
+logging.debug(f"Viser side: {selected_page}")
 
+if selected_page == "oppsett":
+    vis_oppsett_side(app_handler)
+elif selected_page == "kamptropp":
+    vis_kamptropp_side(app_handler)
+elif selected_page == "kamp":
+    vis_kamp_side(app_handler)
+elif selected_page == "bytteplan":
+    vis_bytteplan_side(app_handler)
+
+logging.debug("Side rendret")
 logging.debug("App ferdig lastet")
