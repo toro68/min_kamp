@@ -81,7 +81,7 @@ def vis_spillerposisjoner(app_handler: AppHandler) -> None:
             """
             <style>
             .stButton > button {
-                width: 100px;
+                width: 150px;
             }
             </style>
             """,
