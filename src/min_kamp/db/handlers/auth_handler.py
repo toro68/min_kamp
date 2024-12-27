@@ -281,3 +281,10 @@ class AuthHandler:
                 traceback.format_exc(),
             )
             raise DatabaseError(f"Kunne ikke opprette bruker: {e}")
+
+    def logg_ut(self) -> None:
+        """Logger ut brukeren ved å fjerne bruker_id fra session state."""
+        from min_kamp.utils.streamlit_utils import set_session_state
+
+        set_session_state("bruker_id", None)
+        logger.debug("Bruker logget ut")
