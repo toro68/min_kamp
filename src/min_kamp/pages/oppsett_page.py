@@ -90,7 +90,33 @@ def vis_spillerposisjoner(app_handler: AppHandler) -> None:
 
         st.header("Endre spillerposisjoner")
 
-        posisjoner = ["Keeper", "Forsvar", "Midtbane", "Angrep"]
+        # Standard posisjoner
+        standard_posisjoner = ["Keeper", "Forsvar", "Midtbane", "Angrep"]
+
+        # Hent lagrede egendefinerte posisjoner fra session state
+        egne_posisjoner = st.session_state.get("egne_posisjoner", [])
+
+        # Legg til ny posisjon
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            ny_posisjon = st.text_input(
+                "Legg til ny posisjon",
+                key="ny_posisjon",
+                help="Skriv inn en ny posisjon og klikk 'Legg til'",
+            )
+        with col2:
+            if st.button("Legg til") and ny_posisjon:
+                if (
+                    ny_posisjon not in standard_posisjoner
+                    and ny_posisjon not in egne_posisjoner
+                ):
+                    egne_posisjoner.append(ny_posisjon)
+                    st.session_state.egne_posisjoner = egne_posisjoner
+                    st.success(f"La til posisjon: {ny_posisjon}")
+                    st.rerun()
+
+        # Kombiner standard og egendefinerte posisjoner
+        posisjoner = standard_posisjoner + egne_posisjoner
 
         # Vis hver spiller med mulighet for å endre posisjon
         for spiller in spillere:
@@ -103,11 +129,23 @@ def vis_spillerposisjoner(app_handler: AppHandler) -> None:
                 st.write(spiller.navn)
 
             with col2:
+                # Hvis spilleren har en posisjon som ikke er i listen,
+                # legg den til i egne_posisjoner
+                if spiller.posisjon not in posisjoner:
+                    egne_posisjoner.append(spiller.posisjon)
+                    st.session_state.egne_posisjoner = egne_posisjoner
+                    posisjoner = standard_posisjoner + egne_posisjoner
+
+                try:
+                    posisjon_index = posisjoner.index(spiller.posisjon)
+                except ValueError:
+                    posisjon_index = 0
+
                 ny_posisjon = st.selectbox(
                     "Posisjon",
                     options=posisjoner,
                     key=f"pos_{spiller.id}",
-                    index=posisjoner.index(spiller.posisjon),
+                    index=posisjon_index,
                 )
 
             with col3:
@@ -125,6 +163,21 @@ def vis_spillerposisjoner(app_handler: AppHandler) -> None:
                         except Exception as e:
                             logger.error("Feil ved oppdatering av spiller: %s", e)
                             st.error("Kunne ikke oppdatere posisjon")
+
+        # Vis og administrer egendefinerte posisjoner
+        if egne_posisjoner:
+            st.markdown("---")
+            st.subheader("Egendefinerte posisjoner")
+            for pos in egne_posisjoner:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(pos)
+                with col2:
+                    if st.button("Fjern", key=f"remove_{pos}"):
+                        egne_posisjoner.remove(pos)
+                        st.session_state.egne_posisjoner = egne_posisjoner
+                        st.success(f"Fjernet posisjon: {pos}")
+                        st.rerun()
 
     except Exception as e:
         logger.error("Feil ved visning av spillerposisjoner: %s", e)
