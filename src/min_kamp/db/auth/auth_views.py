@@ -43,33 +43,47 @@ def vis_login_side(app_handler: AppHandler) -> None:
     """
     logger.info("Starter visning av login-side")
 
-    st.title("Logg inn")
+    tab1, tab2 = st.tabs(["Logg inn", "Registrer ny bruker"])
 
-    # Vis innloggingsskjema
-    with st.form("login_form"):
-        brukernavn = st.text_input("Brukernavn")
-        passord = st.text_input("Passord", type="password")
-
-        col1, col2 = st.columns(2)
-        with col1:
+    with tab1:
+        st.header("Logg inn")
+        with st.form("login_form"):
+            brukernavn = st.text_input("Brukernavn")
+            passord = st.text_input("Passord", type="password")
             submit = st.form_submit_button("Logg inn")
-        with col2:
+
+            if submit and brukernavn and passord:
+                bruker = app_handler.auth_handler.sjekk_passord(brukernavn, passord)
+                if bruker:
+                    set_session_state("bruker_id", bruker["id"])
+                    st.success("Innlogget!")
+                    st.rerun()
+                else:
+                    st.error("Feil brukernavn eller passord")
+
+    with tab2:
+        st.header("Registrer ny bruker")
+        with st.form("register_form"):
+            nytt_brukernavn = st.text_input("Velg brukernavn")
+            nytt_passord = st.text_input("Velg passord", type="password")
+            bekreft_passord = st.text_input("Bekreft passord", type="password")
             register = st.form_submit_button("Registrer")
 
-    if submit and brukernavn and passord:
-        bruker = app_handler.auth_handler.sjekk_passord(brukernavn, passord)
-        if bruker:
-            set_session_state("bruker_id", bruker["id"])
-            st.success("Innlogget!")
-            st.rerun()
-        else:
-            st.error("Feil brukernavn eller passord")
-
-    elif register and brukernavn and passord:
-        bruker_id = app_handler.auth_handler.opprett_bruker(brukernavn, passord)
-        if bruker_id:
-            set_session_state("bruker_id", bruker_id)
-            st.success("Bruker opprettet!")
-            st.rerun()
-        else:
-            st.error("Kunne ikke opprette bruker")
+            if register:
+                if not nytt_brukernavn or not nytt_passord:
+                    st.error("Du må fylle ut både brukernavn og passord")
+                elif nytt_passord != bekreft_passord:
+                    st.error("Passordene må være like")
+                else:
+                    bruker_id = app_handler.auth_handler.opprett_bruker(
+                        nytt_brukernavn, nytt_passord
+                    )
+                    if bruker_id:
+                        set_session_state("bruker_id", bruker_id)
+                        st.success("Bruker opprettet!")
+                        st.rerun()
+                    else:
+                        st.error(
+                            "Kunne ikke opprette bruker. "
+                            "Brukernavnet kan være opptatt."
+                        )
