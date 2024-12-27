@@ -48,8 +48,15 @@ class DatabaseHandler:
                 self.database_path, timeout=30.0, isolation_level="IMMEDIATE"
             )
             conn.row_factory = sqlite3.Row
+
+            # Konfigurer WAL-modus og andre innstillinger
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA synchronous=NORMAL")  # Bedre ytelse
+            conn.execute("PRAGMA busy_timeout=5000")  # 5 sekunder timeout
+            conn.execute("PRAGMA temp_store=MEMORY")  # Bruk minne for temp data
+            conn.execute("PRAGMA cache_size=-2000")  # 2MB cache
+            conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
 
             logging.debug(f"[CONN-{conn_id}][Thread-{thread_id}] Tilkobling etablert")
 
