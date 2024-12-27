@@ -76,6 +76,18 @@ def vis_spillerposisjoner(app_handler: AppHandler) -> None:
         app_handler: AppHandler instans
     """
     try:
+        # Legg til CSS for knapper
+        st.markdown(
+            """
+            <style>
+            .stButton > button {
+                width: 100px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         bruker_state = safe_get_session_state("bruker_id")
         if not bruker_state or not bruker_state.success:
             st.error("Ingen bruker funnet")
