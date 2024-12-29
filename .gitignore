@@ -43,6 +43,11 @@ data/
 *.db
 *.sqlite3
 
+# SQLite-filer
+database/kampdata.db
+database/kampdata.db-shm
+database/kampdata.db-wal
+
 # Miljøvariabler
 .env
 .env.*
