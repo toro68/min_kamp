@@ -8,16 +8,15 @@ import sys
 import platform
 import streamlit as st
 
-# Legg til src-mappen i Python-stien
+# Legg til prosjektmappen og src-mappen i Python-stien
 project_root = os.path.dirname(os.path.abspath(__file__))
 src_path = os.path.join(project_root, "src")
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Sett opp stier
-min_kamp_path = os.path.join(src_path, "min_kamp")
-db_path = os.path.join(min_kamp_path, "db")
-
+# Importer etter at stiene er satt opp
 from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
@@ -28,10 +27,12 @@ from min_kamp.pages.oppsett_page import vis_oppsett_side
 from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.kamp_page import vis_kamp_side
 
-# Sett opp logging
-logging.basicConfig(level=logging.DEBUG)
+# Sett opp stier
+min_kamp_path = os.path.join(src_path, "min_kamp")
+db_path = os.path.join(min_kamp_path, "db")
 
 # Debug-informasjon
+logging.basicConfig(level=logging.DEBUG)
 logging.debug("=== System Info ===")
 logging.debug(f"Platform: {platform.platform()}")
 logging.debug(f"Python version: {sys.version}")
