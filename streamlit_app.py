@@ -1,5 +1,6 @@
 """
 Streamlit app for Min Kamp.
+Trigger redeploy på Streamlit Cloud.
 """
 
 import logging
@@ -16,6 +17,19 @@ if project_root not in sys.path:
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# Debug-informasjon
+logging.basicConfig(level=logging.DEBUG)
+logging.debug("=== System Info ===")
+logging.debug(f"Platform: {platform.platform()}")
+logging.debug(f"Python version: {sys.version}")
+logging.debug(f"Current working directory: {os.getcwd()}")
+logging.debug(f"Environment variables: {dict(os.environ)}")
+
+logging.debug("\n=== Path Info ===")
+logging.debug(f"Project root: {project_root}")
+logging.debug(f"Src path: {src_path}")
+logging.debug(f"Python path: {sys.path}")
+
 # Importer etter at stiene er satt opp
 from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
@@ -30,20 +44,6 @@ from min_kamp.pages.kamp_page import vis_kamp_side
 # Sett opp stier
 min_kamp_path = os.path.join(src_path, "min_kamp")
 db_path = os.path.join(min_kamp_path, "db")
-
-# Debug-informasjon
-logging.basicConfig(level=logging.DEBUG)
-logging.debug("=== System Info ===")
-logging.debug(f"Platform: {platform.platform()}")
-logging.debug(f"Python version: {sys.version}")
-logging.debug(f"Current working directory: {os.getcwd()}")
-logging.debug(f"Environment variables: {dict(os.environ)}")
-
-logging.debug("\n=== Path Info ===")
-logging.debug(f"Project root: {project_root}")
-logging.debug(f"Src path: {src_path}")
-logging.debug(f"Min Kamp path: {min_kamp_path}")
-logging.debug(f"Python path: {sys.path}")
 
 # Sjekk mappestruktur
 logging.debug("\n=== Directory Structure ===")
