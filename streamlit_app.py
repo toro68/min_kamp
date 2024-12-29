@@ -7,6 +7,17 @@ import os
 import sys
 import platform
 import streamlit as st
+
+# Legg til src-mappen i Python-stien
+project_root = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(project_root, "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+# Sett opp stier
+min_kamp_path = os.path.join(src_path, "min_kamp")
+db_path = os.path.join(min_kamp_path, "db")
+
 from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
@@ -19,12 +30,6 @@ from min_kamp.pages.kamp_page import vis_kamp_side
 
 # Sett opp logging
 logging.basicConfig(level=logging.DEBUG)
-
-# Legg til prosjektets rot-mappe i Python-stien
-project_root = os.path.dirname(os.path.abspath(__file__))
-src_path = os.path.join(project_root, "src")
-min_kamp_path = os.path.join(src_path, "min_kamp")
-db_path = os.path.join(min_kamp_path, "db")
 
 # Debug-informasjon
 logging.debug("=== System Info ===")
@@ -50,10 +55,6 @@ if os.path.exists(min_kamp_path):
 if os.path.exists(db_path):
     logging.debug(f"DB path: {db_path}")
     logging.debug(f"DB innhold: {os.listdir(db_path)}")
-
-# Legg til src-mappen i Python-stien
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
 
 # Sett opp database-stier
 database_path = os.path.join(project_root, "database", "kampdata.db")
