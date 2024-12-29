@@ -1,5 +1,6 @@
 """
 Streamlit app for Min Kamp.
+
 Trigger redeploy på Streamlit Cloud.
 """
 
@@ -30,6 +31,15 @@ logging.debug(f"Project root: {project_root}")
 logging.debug(f"Src path: {src_path}")
 logging.debug(f"Python path: {sys.path}")
 
+# Sjekk mappestruktur
+logging.debug("\n=== Directory Structure ===")
+if os.path.exists(src_path):
+    logging.debug(f"{src_path} eksisterer")
+    logging.debug(f"Innhold: {os.listdir(src_path)}")
+if os.path.exists(os.path.join(src_path, "min_kamp")):
+    logging.debug(f"{os.path.join(src_path, 'min_kamp')} eksisterer")
+    logging.debug(f"Innhold: {os.listdir(os.path.join(src_path, 'min_kamp'))}")
+
 # Importer etter at stiene er satt opp
 from min_kamp.db.db_handler import DatabaseHandler
 from min_kamp.db.handlers.app_handler import AppHandler
@@ -41,29 +51,15 @@ from min_kamp.pages.oppsett_page import vis_oppsett_side
 from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.kamp_page import vis_kamp_side
 
-# Sett opp stier
-min_kamp_path = os.path.join(src_path, "min_kamp")
-db_path = os.path.join(min_kamp_path, "db")
-
-# Sjekk mappestruktur
-logging.debug("\n=== Directory Structure ===")
-if os.path.exists(src_path):
-    logging.debug(f"{src_path} eksisterer")
-    logging.debug(f"Innhold: {os.listdir(src_path)}")
-if os.path.exists(min_kamp_path):
-    logging.debug(f"{min_kamp_path} eksisterer")
-    logging.debug(f"Innhold: {os.listdir(min_kamp_path)}")
-if os.path.exists(db_path):
-    logging.debug(f"DB path: {db_path}")
-    logging.debug(f"DB innhold: {os.listdir(db_path)}")
-
 # Sett opp database-stier
 database_path = os.path.join(project_root, "database", "kampdata.db")
-migrasjoner_mappe = os.path.join(min_kamp_path, "db", "migrations")
+migrasjoner_mappe = os.path.join(src_path, "min_kamp", "db", "migrations")
+
+logging.debug("\n=== Database Setup ===")
+logging.debug(f"Database path: {database_path}")
+logging.debug(f"Migrasjoner mappe: {migrasjoner_mappe}")
 
 # Opprett databasetilkobling
-logging.debug("\n=== Database Setup ===")
-logging.debug(f"Oppretter DatabaseHandler med sti: {database_path}")
 db_handler = DatabaseHandler(database_path)
 app_handler = AppHandler(db_handler)
 
@@ -73,7 +69,6 @@ kjor_migrasjoner(db_handler, migrasjoner_mappe)
 logging.debug("Migrasjoner fullført")
 
 # Sett opp Streamlit-siden
-logging.debug("\n=== Streamlit Setup ===")
 st.set_page_config(
     page_title="Min Kamp",
     page_icon="⚽",
@@ -97,7 +92,6 @@ setup_sidebar(app_handler)
 logging.debug("Sidebar satt opp")
 
 # Vis hovedsiden
-logging.debug("Setter opp hovedsiden...")
 st.title("Min Kamp")
 
 # Vis valgt side basert på session state
