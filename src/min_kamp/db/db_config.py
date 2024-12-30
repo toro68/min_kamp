@@ -7,11 +7,11 @@ from pathlib import Path
 
 def get_db_path() -> str:
     """Get the database path."""
-    # Finn prosjektets rotmappe
-    project_root = Path(__file__).parent.parent.parent.parent
+    # Bruk hjemmemappen som standard plassering
+    home_dir = Path.home()
+    db_dir = home_dir / ".min_kamp"
 
     # Opprett database-mappen hvis den ikke finnes
-    db_dir = project_root / "database"
     db_dir.mkdir(parents=True, exist_ok=True)
 
     return str(db_dir / "kampdata.db")

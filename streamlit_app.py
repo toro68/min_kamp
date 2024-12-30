@@ -6,17 +6,32 @@ Trigger redeploy på Streamlit Cloud.
 
 import logging
 import os
-import sys
 import platform
+import sys
+from pathlib import Path
+
 import streamlit as st
 
 # Legg til prosjektmappen og src-mappen i Python-stien
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = str(Path(__file__).parent)
 src_path = os.path.join(project_root, "src")
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
+sys.path.insert(0, src_path)
+
+# NOTE: Følgende importer må være etter sys.path.insert()
+# for å kunne finne min_kamp-pakken
+# pylint: disable=wrong-import-position
+from min_kamp.db.auth.auth_views import check_auth, vis_login_side
+from min_kamp.db.db_config import get_db_path
+from min_kamp.db.db_handler import DatabaseHandler
+from min_kamp.db.handlers.app_handler import AppHandler
+from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
+from min_kamp.pages.bytteplan_page import vis_bytteplan_side
+from min_kamp.pages.components.sidebar import setup_sidebar
+from min_kamp.pages.kamp_page import vis_kamp_side
+from min_kamp.pages.kamptropp_page import vis_kamptropp_side
+from min_kamp.pages.oppsett_page import vis_oppsett_side
+
+# pylint: enable=wrong-import-position
 
 # Debug-informasjon
 logging.basicConfig(level=logging.DEBUG)
@@ -40,19 +55,8 @@ if os.path.exists(os.path.join(src_path, "min_kamp")):
     logging.debug(f"{os.path.join(src_path, 'min_kamp')} eksisterer")
     logging.debug(f"Innhold: {os.listdir(os.path.join(src_path, 'min_kamp'))}")
 
-# Importer etter at stiene er satt opp
-from min_kamp.db.db_handler import DatabaseHandler
-from min_kamp.db.handlers.app_handler import AppHandler
-from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
-from min_kamp.db.auth.auth_views import check_auth, vis_login_side
-from min_kamp.pages.bytteplan_page import vis_bytteplan_side
-from min_kamp.pages.components.sidebar import setup_sidebar
-from min_kamp.pages.oppsett_page import vis_oppsett_side
-from min_kamp.pages.kamptropp_page import vis_kamptropp_side
-from min_kamp.pages.kamp_page import vis_kamp_side
-
 # Sett opp database-stier
-database_path = os.path.join(project_root, "database", "kampdata.db")
+database_path = get_db_path()
 migrasjoner_mappe = os.path.join(src_path, "min_kamp", "db", "migrations")
 
 logging.debug("\n=== Database Setup ===")

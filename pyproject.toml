@@ -97,3 +97,20 @@ max-public-methods = 20
 max-returns = 6
 max-statements = 50
 min-public-methods = 1
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"streamlit_app.py" = ["E402"]  # Tillat imports ikke på toppen i streamlit_app.py
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
