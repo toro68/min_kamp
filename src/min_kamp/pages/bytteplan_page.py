@@ -7,18 +7,45 @@ import logging
 from typing import Dict, List, Tuple, cast
 
 import streamlit as st
-
-from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.auth.auth_views import check_auth
 from min_kamp.db.db_handler import DatabaseHandler
-from min_kamp.utils.session_state import safe_get_session_state
-
+from min_kamp.db.handlers.app_handler import AppHandler
 
 logger = logging.getLogger(__name__)
 
 
+def get_bruker_id() -> int:
+    """Henter bruker ID fra query parameters."""
+    bruker_id_str = st.query_params.get("bruker_id")
+    if not bruker_id_str:
+        error_msg = "Ingen bruker-ID funnet"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    try:
+        return int(bruker_id_str)
+    except (ValueError, TypeError):
+        error_msg = "Ugyldig bruker-ID"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+
+def get_kamp_id() -> int:
+    """Henter kamp ID fra query parameters."""
+    kamp_id_str = st.query_params.get("kamp_id")
+    if not kamp_id_str:
+        error_msg = "Ingen kamp-ID funnet"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    try:
+        return int(kamp_id_str)
+    except (ValueError, TypeError):
+        error_msg = "Ugyldig kamp-ID"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+
 def _hent_kampinnstillinger(
-    app_handler: AppHandler, bruker_id: int
+    app_handler: AppHandler, bruker_id: int, kamp_id: int
 ) -> Tuple[int, int, int]:
     """Henter kampinnstillinger fra databasen."""
     try:
@@ -26,16 +53,19 @@ def _hent_kampinnstillinger(
         query = """
         SELECT nokkel, verdi
         FROM app_innstillinger
-        WHERE bruker_id = ? AND nokkel IN (
+        WHERE (bruker_id = ? OR kamp_id = ?)
+        AND nokkel IN (
             'kamplengde',
             'antall_perioder',
             'antall_paa_banen'
         )
+        ORDER BY kamp_id DESC  -- Kampspesifikke innstillinger har prioritet
         """
-        innstillinger = db_handler.execute_query(query, (bruker_id,))
+        innstillinger = db_handler.execute_query(query, (bruker_id, kamp_id))
+        logger.debug("Hentet innstillinger: %s", innstillinger)
 
         kamplengde = 70  # Standard 70 minutter
-        antall_perioder = 14  # Standard 14 perioder (5 min hver)
+        antall_perioder = 7  # Standard 7 perioder (10 min hver)
         antall_paa_banen = 7  # Standard 7 spillere på banen
 
         for row in innstillinger:
@@ -46,16 +76,24 @@ def _hent_kampinnstillinger(
             elif row["nokkel"] == "antall_paa_banen":
                 antall_paa_banen = int(row["verdi"])
 
+        logger.info(
+            "Kampinnstillinger for kamp %d: lengde=%d, perioder=%d, spillere=%d",
+            kamp_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
+        )
         return kamplengde, antall_perioder, antall_paa_banen
     except Exception as e:
         logger.error("Feil ved henting av kampinnstillinger: %s", str(e))
         st.error(f"Kunne ikke hente kampinnstillinger: {str(e)}")
-        return 70, 14, 7
+        return 70, 7, 7
 
 
 def _lagre_kampinnstillinger(
     app_handler: AppHandler,
     bruker_id: int,
+    kamp_id: int,
     kamplengde: int,
     antall_perioder: int,
     antall_paa_banen: int,
@@ -63,23 +101,45 @@ def _lagre_kampinnstillinger(
     """Lagrer kampinnstillinger i databasen."""
     try:
         db_handler = cast(DatabaseHandler, app_handler._database_handler)
+
+        # Slett eventuelle eksisterende innstillinger for denne kampen
+        delete_query = """
+        DELETE FROM app_innstillinger
+        WHERE kamp_id = ? AND nokkel IN (
+            'kamplengde', 'antall_perioder', 'antall_paa_banen'
+        )
+        """
+        db_handler.execute_update(delete_query, (kamp_id,))
+
+        # Sett inn nye innstillinger
         query = """
-        INSERT OR REPLACE INTO app_innstillinger (bruker_id, nokkel, verdi)
+        INSERT INTO app_innstillinger
+        (kamp_id, bruker_id, nokkel, verdi)
         VALUES
-            (?, 'kamplengde', ?),
-            (?, 'antall_perioder', ?),
-            (?, 'antall_paa_banen', ?)
+            (?, ?, 'kamplengde', ?),
+            (?, ?, 'antall_perioder', ?),
+            (?, ?, 'antall_paa_banen', ?)
         """
         db_handler.execute_update(
             query,
             (
+                kamp_id,
                 bruker_id,
                 str(kamplengde),
+                kamp_id,
                 bruker_id,
                 str(antall_perioder),
+                kamp_id,
                 bruker_id,
                 str(antall_paa_banen),
             ),
+        )
+        logger.info(
+            "Lagret kampinnstillinger for kamp %d: lengde=%d, perioder=%d, spillere=%d",
+            kamp_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
         )
     except Exception as e:
         logger.error("Feil ved lagring av kampinnstillinger: %s", str(e))
@@ -126,12 +186,29 @@ def _oppdater_bytteplan(
     """Oppdaterer bytteplan i databasen."""
     try:
         db_handler = cast(DatabaseHandler, app_handler._database_handler)
-        query = """
-        INSERT OR REPLACE INTO bytteplan
+
+        # Først slett eventuelle eksisterende rader for denne kombinasjonen
+        delete_query = """
+        DELETE FROM bytteplan
+        WHERE kamp_id = ? AND spiller_id = ? AND periode = ?
+        """
+        db_handler.execute_update(delete_query, (kamp_id, spiller_id, periode))
+
+        # Så sett inn ny rad
+        insert_query = """
+        INSERT INTO bytteplan
         (kamp_id, spiller_id, periode, er_paa)
         VALUES (?, ?, ?, ?)
         """
-        db_handler.execute_update(query, (kamp_id, spiller_id, periode, er_paa))
+        db_handler.execute_update(insert_query, (kamp_id, spiller_id, periode, er_paa))
+
+        logger.debug(
+            "Oppdatert bytteplan: spiller=%d, periode=%d, er_på=%d",
+            spiller_id,
+            periode,
+            er_paa,
+        )
+
     except Exception as e:
         logger.error("Feil ved oppdatering av bytteplan: %s", str(e))
         st.error(f"Kunne ikke oppdatere bytteplan: {str(e)}")
@@ -225,13 +302,38 @@ def _vis_bytteplan_statistikk(
     # Beregn statistikk per spiller
     statistikk = {}
     for navn, data in spillere.items():
-        perioder_paa = sum(1 for p in data["perioder"].values() if p)
+        # Bare tell perioder opp til antall_perioder og ta siste status per periode
+        gyldige_perioder = {
+            p: status for p, status in data["perioder"].items() if p < len(perioder)
+        }
+        logger.debug(
+            "Gyldige perioder for %s: %s (av totalt %d perioder)",
+            navn,
+            gyldige_perioder,
+            len(perioder),
+        )
+
+        perioder_paa = sum(1 for p in gyldige_perioder.values() if p)
+        logger.debug(
+            "Perioder på banen for %s: %d av %d mulige",
+            navn,
+            perioder_paa,
+            len(perioder),
+        )
+
         spilletid = int(perioder_paa * periode_lengde)
+        logger.debug(
+            "Beregnet spilletid for %s: %d perioder * %.2f min = %d min",
+            navn,
+            perioder_paa,
+            periode_lengde,
+            spilletid,
+        )
+
         bytter = 0
         forrige_status = None
-
         for p_idx in range(len(perioder)):
-            status = data["perioder"].get(p_idx, False)
+            status = gyldige_perioder.get(p_idx, False)
             if forrige_status is not None and status != forrige_status:
                 bytter += 1
             forrige_status = status
@@ -351,173 +453,193 @@ def _vis_bytteplan_html(
 
 
 def vis_bytteplan_side(app_handler: AppHandler) -> None:
-    """Hovedfunksjon for bytteplan-siden."""
-    if not check_auth(app_handler.auth_handler):
-        return
+    """Viser bytteplan-siden.
 
-    st.title("Bytteplan")
+    Args:
+        app_handler: AppHandler instans
+    """
+    try:
+        auth_handler = app_handler.auth_handler
+        if not check_auth(auth_handler):
+            return
 
-    # Hent aktiv kamp
-    kamp_state = safe_get_session_state("current_kamp_id")
-    if not kamp_state or not kamp_state.success:
-        st.warning("Ingen aktiv kamp er valgt")
-        return
-    kamp_id = cast(int, kamp_state.value)
-    logger.debug("Aktiv kamp: %d", kamp_id)
+        st.title("Bytteplan")
 
-    bruker_state = safe_get_session_state("bruker_id")
-    if not bruker_state or not bruker_state.success:
-        st.error("Ingen bruker er logget inn")
-        return
-    bruker_id = cast(int, bruker_state.value)
-    logger.debug("Aktiv bruker: %d", bruker_id)
+        # Hent bruker ID og kamp ID
+        try:
+            bruker_id = get_bruker_id()
+            kamp_id = get_kamp_id()
+        except ValueError as e:
+            st.error(str(e))
+            if st.button("Gå til oppsett for å velge kamp"):
+                st.query_params["page"] = "oppsett"
+                st.rerun()
+            return
 
-    # Kampinnstillinger
-    st.subheader("Kampinnstillinger")
-    kamplengde, antall_perioder, antall_paa_banen = _hent_kampinnstillinger(
-        app_handler, bruker_id
-    )
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        ny_kamplengde = st.number_input(
-            "Kamplengde (minutter)", min_value=1, value=kamplengde
-        )
-    with col2:
-        nytt_antall_perioder = st.number_input(
-            "Antall perioder", min_value=1, value=antall_perioder
-        )
-    with col3:
-        nytt_antall_paa_banen = st.number_input(
-            "Antall spillere på banen", min_value=1, value=antall_paa_banen
+        # Hent kampinnstillinger
+        kamplengde, antall_perioder, antall_paa_banen = _hent_kampinnstillinger(
+            app_handler, bruker_id, kamp_id
         )
 
-    if st.button("Lagre innstillinger"):
-        _lagre_kampinnstillinger(
-            app_handler,
-            bruker_id,
+        # Kampinnstillinger
+        st.subheader("Kampinnstillinger")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            ny_kamplengde = st.number_input(
+                "Kamplengde (minutter)", min_value=1, value=kamplengde
+            )
+        with col2:
+            nytt_antall_perioder = st.number_input(
+                "Antall perioder", min_value=1, value=antall_perioder
+            )
+        with col3:
+            nytt_antall_paa_banen = st.number_input(
+                "Antall spillere på banen", min_value=1, value=antall_paa_banen
+            )
+
+        if st.button("Lagre innstillinger"):
+            _lagre_kampinnstillinger(
+                app_handler,
+                bruker_id,
+                kamp_id,
+                ny_kamplengde,
+                nytt_antall_perioder,
+                nytt_antall_paa_banen,
+            )
+            st.success("Innstillinger lagret")
+            st.rerun()
+
+        # Beregn periodetidspunkter
+        periode_lengde = ny_kamplengde / nytt_antall_perioder
+        logger.debug(
+            "Beregner periodelengde: kamplengde=%d, antall_perioder=%d, periode_lengde=%f",
             ny_kamplengde,
             nytt_antall_perioder,
-            nytt_antall_paa_banen,
+            periode_lengde,
         )
-        st.success("Innstillinger lagret")
-        st.rerun()
+        perioder = [int(i * periode_lengde) for i in range(nytt_antall_perioder)]
 
-    # Beregn periodetidspunkter
-    periode_lengde = ny_kamplengde / nytt_antall_perioder
-    perioder = [int(i * periode_lengde) for i in range(nytt_antall_perioder)]
+        # Hent bytteplan
+        bytteplan_data = _hent_bytteplan(app_handler, kamp_id)
 
-    # Hent bytteplan
-    bytteplan_data = _hent_bytteplan(app_handler, kamp_id)
+        # Organiser data for visning
+        spillere = {}
+        posisjoner = {"Keeper": [], "Forsvar": [], "Midtbane": [], "Angrep": []}
 
-    # Organiser data for visning
-    spillere = {}
-    posisjoner = {"Keeper": [], "Forsvar": [], "Midtbane": [], "Angrep": []}
+        for rad in bytteplan_data:
+            if rad["navn"] not in spillere:
+                spillere[rad["navn"]] = {
+                    "id": rad["spiller_id"],
+                    "posisjon": rad["posisjon"],
+                    "perioder": {p: False for p in range(nytt_antall_perioder)},
+                }
+                posisjoner[rad["posisjon"]].append(rad["navn"])
+            if rad["periode"] is not None:
+                spillere[rad["navn"]]["perioder"][rad["periode"]] = rad["er_paa"]
 
-    for rad in bytteplan_data:
-        if rad["navn"] not in spillere:
-            spillere[rad["navn"]] = {
-                "id": rad["spiller_id"],
-                "posisjon": rad["posisjon"],
-                "perioder": {p: False for p in range(nytt_antall_perioder)},
-            }
-            posisjoner[rad["posisjon"]].append(rad["navn"])
-        if rad["periode"] is not None:
-            spillere[rad["navn"]]["perioder"][rad["periode"]] = rad["er_paa"]
+        logger.debug("Organiserte spillerdata: %s", spillere)
 
-    logger.debug("Organiserte spillerdata: %s", spillere)
+        if not spillere:
+            st.warning(
+                "Ingen spillere er lagt til i kamptroppen. "
+                "Gå til Kamptropp-siden for å legge til spillere."
+            )
+            return
 
-    if not spillere:
-        st.warning(
-            "Ingen spillere er lagt til i kamptroppen. "
-            "Gå til Kamptropp-siden for å legge til spillere."
+        # Beregn gjennomsnittlig spilletid
+        omgang_lengde = int(ny_kamplengde / 2)
+        antall_i_tropp = len(spillere)
+        total_spilletid = ny_kamplengde * nytt_antall_paa_banen
+        snitt_spilletid = int(total_spilletid / antall_i_tropp)
+
+        st.info(
+            "⚽ Alle spillere i kamptroppen bør minimum "
+            f"spille én omgang ({omgang_lengde} min) "
+            "for å sikre god spillerutvikling.\n\n"
+            f"💡 {antall_i_tropp} spillere i tropp, "
+            f"{nytt_antall_paa_banen} på banen = "
+            f"snitt {snitt_spilletid} min spilletid.\n\n"
+            "🌟 Fokus på utvikling og mestring - "
+            "slik bygger vi et sterkt lag."
         )
-        return
 
-    # Beregn gjennomsnittlig spilletid
-    omgang_lengde = int(ny_kamplengde / 2)
-    antall_i_tropp = len(spillere)
-    total_spilletid = ny_kamplengde * nytt_antall_paa_banen
-    snitt_spilletid = int(total_spilletid / antall_i_tropp)
+        # Vis checkbox-basert bytteplan først
+        st.subheader("Rediger bytteplan")
 
-    st.info(
-        "⚽ Alle spillere i kamptroppen bør minimum "
-        f"spille én omgang ({omgang_lengde} min) "
-        "for å sikre god spillerutvikling.\n\n"
-        f"💡 {antall_i_tropp} spillere i tropp, "
-        f"{nytt_antall_paa_banen} på banen = "
-        f"snitt {snitt_spilletid} min spilletid.\n\n"
-        "🌟 Fokus på utvikling og mestring - "
-        "slik bygger vi et sterkt lag."
-    )
+        # Vis kolonneoverskrifter
+        cols = st.columns([2] + [1] * nytt_antall_perioder)
+        cols[0].write("Navn")
+        for p_idx, periode in enumerate(perioder):
+            cols[p_idx + 1].write(str(periode))
 
-    # Vis checkbox-basert bytteplan først
-    st.subheader("Rediger bytteplan")
+        # Vis tabellen med checkboxer, gruppert etter posisjon
+        for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
+            if posisjoner[posisjon]:
+                st.markdown(f"**{posisjon}**")
+                for navn in sorted(posisjoner[posisjon]):
+                    # Beregn spilletid
+                    perioder_paa = spillere[navn]["perioder"].values()
+                    antall_perioder_paa = sum(1 for p in perioder_paa if p)
+                    spilletid = int(antall_perioder_paa * periode_lengde)
 
-    # Vis kolonneoverskrifter
-    cols = st.columns([2] + [1] * nytt_antall_perioder)
-    cols[0].write("Navn")
-    for p_idx, periode in enumerate(perioder):
-        cols[p_idx + 1].write(str(periode))
-
-    # Vis tabellen med checkboxer, gruppert etter posisjon
-    for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
-        if posisjoner[posisjon]:
-            st.markdown(f"**{posisjon}**")
-            for navn in sorted(posisjoner[posisjon]):
-                # Beregn spilletid
-                perioder_paa = spillere[navn]["perioder"].values()
-                antall_perioder_paa = sum(1 for p in perioder_paa if p)
-                spilletid = int(antall_perioder_paa * periode_lengde)
-
-                cols = st.columns([2] + [1] * nytt_antall_perioder)
-                spiller_info = f"{navn} ({spilletid} min)"
-                cols[0].write(spiller_info)
-                for p_idx, periode in enumerate(perioder):
-                    ny_verdi = cols[p_idx + 1].checkbox(
-                        (f"Spiller {navn} på banen " f"i periode {periode}"),
-                        value=spillere[navn]["perioder"].get(p_idx, False),
-                        key=f"{navn}_{periode}",
-                        label_visibility="collapsed",
-                    )
-                    if ny_verdi != spillere[navn]["perioder"].get(p_idx, False):
-                        _oppdater_bytteplan(
-                            app_handler, kamp_id, spillere[navn]["id"], p_idx, ny_verdi
+                    cols = st.columns([2] + [1] * nytt_antall_perioder)
+                    spiller_info = f"{navn} ({spilletid} min)"
+                    cols[0].write(spiller_info)
+                    for p_idx, periode in enumerate(perioder):
+                        ny_verdi = cols[p_idx + 1].checkbox(
+                            (f"Spiller {navn} på banen " f"i periode {periode}"),
+                            value=spillere[navn]["perioder"].get(p_idx, False),
+                            key=f"{navn}_{periode}",
+                            label_visibility="collapsed",
                         )
+                        if ny_verdi != spillere[navn]["perioder"].get(p_idx, False):
+                            _oppdater_bytteplan(
+                                app_handler,
+                                kamp_id,
+                                spillere[navn]["id"],
+                                p_idx,
+                                ny_verdi,
+                            )
 
-    # Vis antall spillere på banen for hver periode
-    st.markdown("---")
-    cols = st.columns([2] + [1] * nytt_antall_perioder)
-    cols[0].write("**Antall på banen**")
+        # Vis antall spillere på banen for hver periode
+        st.markdown("---")
+        cols = st.columns([2] + [1] * nytt_antall_perioder)
+        cols[0].write("**Antall på banen**")
 
-    # Beregn antall spillere på banen for hver periode
-    for p_idx, periode in enumerate(perioder):
-        antall_paa = sum(
-            1 for spiller in spillere.values() if spiller["perioder"].get(p_idx, False)
+        # Beregn antall spillere på banen for hver periode
+        for p_idx, periode in enumerate(perioder):
+            antall_paa = sum(
+                1
+                for spiller in spillere.values()
+                if spiller["perioder"].get(p_idx, False)
+            )
+
+            if antall_paa != nytt_antall_paa_banen:
+                cols[p_idx + 1].markdown(f"**:red[{antall_paa}]**")
+            else:
+                cols[p_idx + 1].markdown(f"**:green[{antall_paa}]**")
+
+        st.markdown("---")
+
+        # Vis kompakt bytteplan
+        st.subheader("Bytteplan")
+        _vis_bytteplan_html(spillere, perioder, periode_lengde)
+
+        # Vis statistikk
+        st.markdown("---")
+        _vis_bytteplan_statistikk(spillere, perioder, periode_lengde)
+
+        # Vis nedlastbar versjon til slutt
+        st.markdown("---")
+        st.subheader("Last ned bytteplan")
+        st.info(
+            "💾 For å laste ned bytteplanen som en CSV-fil:\n"
+            "1. Høyreklikk på tabellen under\n"
+            "2. Velg 'Last ned som CSV'\n"
+            "3. Filen kan åpnes i Excel eller Numbers"
         )
-
-        if antall_paa != nytt_antall_paa_banen:
-            cols[p_idx + 1].markdown(f"**:red[{antall_paa}]**")
-        else:
-            cols[p_idx + 1].markdown(f"**:green[{antall_paa}]**")
-
-    st.markdown("---")
-
-    # Vis kompakt bytteplan
-    st.subheader("Bytteplan")
-    _vis_bytteplan_html(spillere, perioder, periode_lengde)
-
-    # Vis statistikk
-    st.markdown("---")
-    _vis_bytteplan_statistikk(spillere, perioder, periode_lengde)
-
-    # Vis nedlastbar versjon til slutt
-    st.markdown("---")
-    st.subheader("Last ned bytteplan")
-    st.info(
-        "💾 For å laste ned bytteplanen som en CSV-fil:\n"
-        "1. Høyreklikk på tabellen under\n"
-        "2. Velg 'Last ned som CSV'\n"
-        "3. Filen kan åpnes i Excel eller Numbers"
-    )
-    _vis_bytteplan_oppsummering(spillere, perioder, periode_lengde)
+        _vis_bytteplan_oppsummering(spillere, perioder, periode_lengde)
+    except Exception as e:
+        logger.error("Feil ved visning av bytteplan: %s", str(e))
+        st.error(f"Kunne ikke vis bytteplan: {str(e)}")

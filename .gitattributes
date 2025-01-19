@@ -1,0 +1,10 @@
+# Git attributes for AI rules
+.aigenrc    linguist-language=YAML
+.aigenrc    linguist-generated=false
+.aigenrc    merge=union
+
+# Beskytt viktige filer
+src/min_kamp/db/auth/*     merge=ours
+src/min_kamp/db/handlers/* merge=ours
+streamlit_app.py           merge=ours
+src/min_kamp/pages/*       merge=ours

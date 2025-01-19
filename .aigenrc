@@ -1,0 +1,781 @@
+# AI Assistant Rules
+
+# Beskyttede filer som ikke kan endres
+protected_files:
+  - src/min_kamp/db/auth/*
+  - src/min_kamp/db/handlers/*
+  - streamlit_app.py
+  - src/min_kamp/pages/*
+  - src/min_kamp/models/*
+  - src/min_kamp/db/utils/*
+
+# Tillatte operasjoner
+allowed_operations:
+  - fix_linter_errors
+  - add_comments
+  - format_code
+  - add_logging
+  - add_error_handling
+  - improve_validation
+  - enhance_documentation
+
+# Forbudte operasjoner
+forbidden_operations:
+  - delete_files
+  - remove_functions
+  - modify_auth_logic
+  - change_database_schema
+  - modify_existing_functionality
+  - add_new_files
+  - modify_code_without_approval
+  - make_architectural_decisions
+  - use_session_state
+  - modify_session_state
+  - modify_database_queries
+  - change_logging_setup
+  - modify_error_handling
+  - bypass_authentication
+
+# Regler for kodeendringer
+code_modification_rules:
+  - must_ask_before_making_changes
+  - must_get_approval_for_all_changes
+  - must_preserve_existing_functionality
+  - must_maintain_authentication
+  - must_keep_norwegian_comments
+  - must_follow_project_structure
+  - no_automatic_code_generation
+  - no_refactoring_without_approval
+  - must_use_query_parameters
+  - no_session_state_usage
+  - must_include_type_hints
+  - must_follow_logging_standards
+  - must_handle_exceptions
+  - must_validate_input_data
+  - must_use_prepared_statements
+  - must_follow_naming_conventions
+  - must_implement_step_by_step:
+    - Forklar hvert steg før implementering
+    - Ett steg om gangen
+    - Vent på godkjenning mellom hvert steg
+    - Test hvert steg før neste
+    - Logg endringer underveis
+    - Mulighet for å rulle tilbake hvert steg
+
+# Regler for kodebasen
+- Ikke bruk session state, bruk query parameters i stedet
+- Hent alltid data direkte fra database
+- Bruk norsk i kodebasen, men ikke æ, ø, å i filnavn eller funksjonsnavn
+- Bruk zsh som standard shell
+- Alle kodeendringer må godkjennes av bruker
+- Ingen automatiske endringer uten godkjenning
+- Spør alltid før du foreslår endringer
+- La bruker ha full kontroll over kodebasen
+- Bruk type hints for alle funksjoner
+- Følg logging-standarder med riktige nivåer
+- Håndter alle exceptions med passende feilmeldinger
+- Valider all inndata før bruk
+- Bruk prepared statements for SQL-spørringer
+- Følg norske navnekonvensjoner i koden
+
+# Database-regler
+database_rules:
+  - bruk_prepared_statements: true
+  - valider_input: true
+  - logging_av_feil: true
+  - transaksjoner_ved_endringer: true
+  - database_navn: kampdata.db
+  - database_plassering: database/kampdata.db
+  - tabeller:
+    - migrations:
+      - id (PK, AUTOINCREMENT)
+      - navn (TEXT NOT NULL UNIQUE)
+      - kjort_dato (TIMESTAMP)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - brukere:
+      - id (PK, AUTOINCREMENT)
+      - brukernavn (TEXT NOT NULL UNIQUE)
+      - passord_hash (TEXT NOT NULL)
+      - salt (TEXT NOT NULL)
+      - opprettet_dato (DATETIME)
+      - sist_innlogget (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - app_innstillinger:
+      - id (PK, AUTOINCREMENT)
+      - bruker_id (FK -> brukere.id)
+      - nokkel (TEXT NOT NULL)
+      - verdi (TEXT)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - kamper:
+      - id (PK, AUTOINCREMENT)
+      - bruker_id (FK -> brukere.id)
+      - motstander (TEXT NOT NULL)
+      - dato (DATE NOT NULL)
+      - hjemmebane (BOOLEAN NOT NULL)
+      - resultat_hjemme (INTEGER)
+      - resultat_borte (INTEGER)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - spillere:
+      - id (PK, AUTOINCREMENT)
+      - bruker_id (FK -> brukere.id)
+      - navn (TEXT NOT NULL)
+      - posisjon (TEXT NOT NULL)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - kamptropp:
+      - id (PK, AUTOINCREMENT)
+      - kamp_id (FK -> kamper.id)
+      - spiller_id (FK -> spillere.id)
+      - er_med (BOOLEAN NOT NULL DEFAULT 0)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - bytteplan:
+      - id (PK, AUTOINCREMENT)
+      - kamp_id (FK -> kamper.id)
+      - spiller_id (FK -> spillere.id)
+      - periode (INTEGER NOT NULL)
+      - er_paa (BOOLEAN NOT NULL DEFAULT 0)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+    - spilletid:
+      - id (PK, AUTOINCREMENT)
+      - kamp_id (FK -> kamper.id)
+      - spiller_id (FK -> spillere.id)
+      - minutter (INTEGER NOT NULL)
+      - opprettet_dato (DATETIME)
+      - sist_oppdatert (DATETIME)
+
+  - indekser:
+    - migrations:
+      - idx_migrations_navn: migrations(navn)
+    - brukere:
+      - idx_brukere_brukernavn: brukere(brukernavn)
+    - app_innstillinger:
+      - idx_app_innstillinger_bruker_id: app_innstillinger(bruker_id)
+      - idx_app_innstillinger_nokkel: app_innstillinger(nokkel)
+    - kamper:
+      - idx_kamper_bruker_id: kamper(bruker_id)
+      - idx_kamper_dato: kamper(dato)
+    - spillere:
+      - idx_spillere_bruker_id: spillere(bruker_id)
+      - idx_spillere_posisjon: spillere(posisjon)
+      - idx_spillere_navn: spillere(navn COLLATE NOCASE)
+      - idx_spillere_bruker_navn: spillere(bruker_id, navn) UNIQUE
+    - kamptropp:
+      - idx_kamptropp_kamp_id: kamptropp(kamp_id)
+      - idx_kamptropp_spiller_id: kamptropp(spiller_id)
+      - idx_kamptropp_er_med: kamptropp(er_med)
+      - idx_kamptropp_kamp_spiller: kamptropp(kamp_id, spiller_id)
+    - bytteplan:
+      - idx_bytteplan_kamp_id: bytteplan(kamp_id)
+      - idx_bytteplan_spiller_id: bytteplan(spiller_id)
+      - idx_bytteplan_periode: bytteplan(periode)
+    - spilletid:
+      - idx_spilletid_kamp_id: spilletid(kamp_id)
+      - idx_spilletid_spiller_id: spilletid(spiller_id)
+
+  - constraints:
+    - migrations:
+      - navn UNIQUE
+    - brukere:
+      - brukernavn UNIQUE
+    - spillere:
+      - UNIQUE(bruker_id, navn)
+    - kamptropp:
+      - UNIQUE(kamp_id, spiller_id)
+      - FOREIGN KEY (kamp_id) REFERENCES kamper(id) ON DELETE CASCADE
+      - FOREIGN KEY (spiller_id) REFERENCES spillere(id) ON DELETE CASCADE
+    - bytteplan:
+      - FOREIGN KEY (kamp_id) REFERENCES kamper(id) ON DELETE CASCADE
+      - FOREIGN KEY (spiller_id) REFERENCES spillere(id) ON DELETE CASCADE
+    - spilletid:
+      - UNIQUE(kamp_id, spiller_id)
+      - FOREIGN KEY (kamp_id) REFERENCES kamper(id) ON DELETE CASCADE
+      - FOREIGN KEY (spiller_id) REFERENCES spillere(id) ON DELETE CASCADE
+
+# Logging-regler
+logging_rules:
+  - nivåer:
+    - ERROR: Kritiske feil som påvirker funksjonalitet
+    - WARNING: Potensielle problemer som bør undersøkes
+    - INFO: Viktige hendelser i systemet
+    - DEBUG: Detaljert informasjon for debugging
+  - format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  - språk: norsk
+  - inkluder_context: true
+
+# Debugging-regler
+debugging_rules:
+  # Generelle regler
+  generelt:
+    - Alltid bruk logger.debug() for debugging-informasjon
+    - Aldri bruk print() for debugging
+    - Fjern debugging-kode før commit
+    - Bruk beskrivende meldinger på norsk
+    - Inkluder relevant kontekst i meldinger
+
+  # Logging-nivåer for debugging
+  logging_nivåer:
+    - DEBUG: For detaljert debugging-informasjon
+    - INFO: For viktige hendelser under debugging
+    - WARNING: For potensielle problemer under debugging
+    - ERROR: For faktiske feil under debugging
+
+  # Verktøy og metoder
+  verktøy:
+    - pdb/ipdb: Kun for lokal debugging
+    - streamlit.write(): Kun for midlertidig debugging av Streamlit-app
+    - pytest: For systematisk testing og debugging
+    - mypy: For type-sjekking under debugging
+
+  # Debugging-kontekst
+  kontekst:
+    - Variabelverdier: Logg relevante variabelverdier
+    - Funksjonskall: Logg inn- og ut-parametere
+    - SQL-spørringer: Logg spørringer og resultater
+    - Brukerhandlinger: Logg relevante brukerhandlinger
+    - Feilmeldinger: Logg full stack trace
+
+  # Best practices
+  beste_praksis:
+    - Start med enkel logging før avansert debugging
+    - Isoler problemområdet før detaljert debugging
+    - Verifiser antagelser med logging
+    - Dokumenter debugging-funn
+    - Lag tester for avdekkede feil
+    - Oppdater dokumentasjon basert på funn
+
+  # Forbudte praksiser
+  forbudt:
+    - Hardkoding av debugging-verdier
+    - Commenting ut kode for debugging
+    - Bruk av print-statements
+    - Debugging direkte i produksjon
+    - Eksponering av sensitive data i logger
+    - Permanent debugging-kode
+
+  # Debugging-workflow
+  workflow:
+    1. Identifiser problemet
+    2. Legg til relevant logging
+    3. Reproduser feilen
+    4. Analyser logger
+    5. Test løsning
+    6. Fjern debugging-kode
+    7. Dokumenter løsningen
+
+  # Sikkerhet
+  sikkerhet:
+    - Ikke logg sensitive data
+    - Ikke aktiver debugging i produksjon
+    - Fjern all debugging-informasjon før deploy
+    - Beskytt debug-endepunkter
+    - Krypter debug-logger
+
+# Funksjonalitet for formation_page.py
+
+## Hovedfunksjoner
+1. Vise og administrere formasjoner for en fotballkamp
+2. Periodevis oversikt over spillerposisjoner
+3. Lagring av formasjoner og spillerposisjoner
+
+## Detaljert funksjonalitet
+
+### Formasjonsvisning
+- Vise fotballbane med spillerposisjoner
+- Støtte for standard formasjoner:
+  - 4-4-2
+  - 4-3-3
+  - 4-2-3-1
+  - 3-5-2
+- Visuell representasjon med:
+  - Grønn fotballbane
+  - Midtlinje
+  - Spillersirkler med nummer
+  - Hover-effekter på spillere
+
+### Periodevis oversikt
+- Vise alle perioder fra bytteplanen
+- For hver periode:
+  - Start- og sluttid
+  - Beskrivelse
+  - Liste over spillere på banen
+  - Mulighet til å velge posisjon for hver spiller:
+    - Keeper
+    - Forsvar
+    - Midtbane
+    - Angrep
+  - Nedlasting av PDF med:
+    - Fotballbane og spillerposisjoner
+    - Spillerliste med posisjoner
+    - Periode-informasjon
+    - Kampdetaljer
+
+### Lagring og database
+- Lagre valgt grunnformasjon per kamp
+- Lagre spillerposisjoner per periode
+- Kobling mot:
+  - Kamptropp
+  - Bytteplan
+  - Spillere
+
+### Brukergrensesnitt
+- Expandere for hver periode
+- To-kolonne layout:
+  - Venstre: Spilleroversikt
+  - Høyre: Posisjonsvalg
+- Knapper for å:
+  - Lagre grunnformasjon
+  - Oppdatere spillerposisjoner
+- Feedback ved lagring
+
+### Sikkerhet og feilhåndtering
+- Autentiseringssjekk
+- Validering av kamp-ID
+- Feilhåndtering med logging
+- Brukervennlige feilmeldinger
+
+### Integrasjon
+- Kobling mot bytteplan
+- Støtte for kampoppsett
+- Navigasjon mellom sider
+
+# Spesifikasjoner for formation_page.py
+formation_page_specs:
+  hovedfunksjonalitet:
+    - Vise og administrere formasjoner for en fotballkamp
+    - Lagre og endre grunnformasjon
+    - Periodevis oversikt over spillerposisjoner
+    - Nedlasting av formasjoner som PDF
+
+  detaljert_funksjonalitet:
+    grunnformasjon:
+      - Velge standard formasjon for kampen
+      - Lagre grunnformasjon i database
+      - Vise fotballbane med posisjoner
+      - Støttede formasjoner:
+        - 4-4-2
+        - 4-3-3
+        - 4-2-3-1
+        - 3-5-2
+
+    kampinnstillinger:
+      - Styrer antall perioder i formasjonsoversikten
+      - Innstillinger lagres i app_innstillinger:
+        - Kamplengde (minutter)
+        - Antall perioder
+        - Antall spillere på banen
+      - Automatisk oppdatering av periodevisning
+      - Validering av innstillinger
+      - Synkronisering med bytteplan
+
+    periodevis_oversikt:
+      - Vise alle perioder fra bytteplan
+      - Antall perioder styres av kampinnstillinger
+      - Mulighet for å endre formasjon per periode
+      - Arve grunnformasjon som standard
+      - Drag-and-drop av spillere til posisjoner
+      - Automatisk posisjonering basert på spillertype
+      - Nedlasting av PDF med formasjon og spillerliste
+
+    database:
+      tabeller:
+        app_innstillinger:
+          - kamp_id (FK)
+          - bruker_id (FK)
+          - nokkel (
+            - 'grunnformasjon'
+            - 'kamplengde'
+            - 'antall_perioder'
+            - 'antall_spillere'
+          )
+          - verdi (
+            - formasjonstype
+            - integer (for innstillinger)
+          )
+        kamptropp:
+          - spiller_id (FK)
+          - kamp_id (FK)
+          - posisjon
+
+    lagring:
+      grunnformasjon:
+        - Lagres i app_innstillinger tabellen
+        - Bruker query_params for bruker_id
+        - Validering av bruker og kamp
+        - Logging av alle operasjoner
+        - Feilhåndtering med detaljerte meldinger
+
+      kampinnstillinger:
+        - Lagres i app_innstillinger tabellen
+        - Påvirker antall perioder i formasjonsoversikt
+        - Validering av verdier:
+          - Kamplengde: positiv integer
+          - Antall perioder: minimum 1
+          - Antall spillere: minimum 7, maksimum 11
+        - Automatisk synkronisering med bytteplan
+
+      spillerposisjoner:
+        - Lagres i kamptropp tabellen
+        - Oppdateres per periode
+        - Arver fra grunnformasjon som standard
+        - Validering av posisjoner
+
+    posisjoner:
+      - Keeper
+      - Forsvar
+      - Midtbane
+      - Angrep
+
+    pdf_eksport:
+      - Fotballbane med spillerposisjoner
+      - Spillerliste med posisjoner
+      - Kampinformasjon
+      - Periodedetaljer
+
+    validering:
+      - Sjekk av antall spillere per posisjon
+      - Validering av spillerposisjoner
+      - Håndtering av manglende data
+      - Validering av bruker_id
+      - Validering av kamp_id
+
+    sikkerhet:
+      - Autentiseringssjekk via query_params
+      - Validering av kamp-ID
+      - Beskyttelse mot SQL-injeksjon
+      - Feilhåndtering med logging
+      - Ingen bruk av session state
+
+  brukergrensesnitt:
+    komponenter:
+      - Formasjonsvelger øverst
+      - Fotballbane med spillerposisjoner
+      - Expandere for perioder
+      - Drag-and-drop funksjonalitet
+      - PDF-nedlastingsknapp
+      - Lagre grunnformasjon-knapp
+
+    interaktivitet:
+      - Direkte posisjonering av spillere
+      - Lagring av endringer
+      - Tilbakemeldinger ved lagring
+      - Hover-effekter på spillere
+      - Arv av grunnformasjon til perioder
+
+    responsivitet:
+      - Tilpasset visning av fotballbane
+      - Dynamisk oppdatering ved endringer
+      - Skalerbar layout
+
+  integrasjon:
+    - Kobling mot bytteplan for perioder
+    - Henting av spillere fra kamptropp
+    - Lagring i app_innstillinger
+    - Navigasjon mellom sider
+    - Bruk av query parameters
+
+# Funksjonalitet for bytteplan_page.py
+
+## Hovedfunksjoner
+1. Vise og administrere bytteplan for en fotballkamp
+2. Periodevis oversikt over spillere på banen
+3. Statistikk over spilletid og byttemønster
+4. Nedlasting av bytteplan
+
+## Detaljert funksjonalitet
+
+### Kampinnstillinger
+- Kamplengde i minutter
+- Antall perioder
+- Antall spillere på banen
+- Automatisk beregning av:
+  - Periodelengde
+  - Gjennomsnittlig spilletid
+  - Anbefalt minimumstid (én omgang)
+
+### Bytteplan-redigering
+- Checkbox-basert redigering per periode
+- Gruppering etter spillerposisjon:
+  - Keeper
+  - Forsvar
+  - Midtbane
+  - Angrep
+- Visuell validering av:
+  - Antall spillere på banen
+  - Spilletid per spiller
+  - Byttemønster
+
+### Visninger
+- Kompakt HTML-tabell med:
+  - Periodevis oversikt
+  - Spillere på banen
+  - Bytter inn/ut
+  - Spillere på benken
+- Statistikk per spiller:
+  - Total spilletid
+  - Antall perioder
+  - Antall bytter
+- Nedlastbar CSV-versjon med:
+  - Full periodeliste
+  - Spilleroversikt
+  - Byttedetaljer
+
+### Sikkerhet og feilhåndtering
+- Autentiseringssjekk
+- Validering av:
+  - Bruker-ID
+  - Kamp-ID
+  - Kampinnstillinger
+- Feilhåndtering med logging
+- Brukervennlige feilmeldinger
+
+### Integrasjon
+- Kobling mot kamptropp
+- Støtte for kampoppsett
+- Navigasjon mellom sider
+
+# Spesifikasjoner for bytteplan_page.py
+bytteplan_page_specs = {
+    "hovedfunksjonalitet": [
+        "Vise og administrere bytteplan for en fotballkamp",
+        "Periodevis oversikt over spillere på banen",
+        "Statistikk over spilletid og byttemønster",
+        "Nedlasting av bytteplan"
+    ],
+
+    "detaljert_funksjonalitet": {
+        "kampinnstillinger": {
+            "konfigurerbare_verdier": [
+                "Kamplengde (minutter)",
+                "Antall perioder",
+                "Antall spillere på banen"
+            ],
+            "automatiske_beregninger": [
+                "Periodelengde",
+                "Gjennomsnittlig spilletid",
+                "Anbefalt minimumstid"
+            ]
+        },
+        "bytteplan_redigering": {
+            "visning": [
+                "Checkbox-matrise",
+                "Gruppering etter posisjon",
+                "Periodevis oversikt",
+                "Validering av antall på banen"
+            ],
+            "funksjonalitet": [
+                "Direkte redigering per periode",
+                "Automatisk oppdatering i database",
+                "Visuell tilbakemelding",
+                "Spilletidsberegning"
+            ]
+        },
+        "statistikk": {
+            "per_spiller": [
+                "Total spilletid",
+                "Antall perioder på banen",
+                "Antall bytter",
+                "Posisjon"
+            ],
+            "per_periode": [
+                "Antall spillere på banen",
+                "Bytter inn/ut",
+                "Spillere på benken"
+            ]
+        }
+    },
+
+    "brukergrensesnitt": {
+        "komponenter": [
+            "Innstillinger-panel",
+            "Bytteplan-matrise",
+            "Statistikk-visning",
+            "Nedlastingsområde"
+        ],
+        "interaktivitet": [
+            "Checkbox-toggle",
+            "Knapper for lagring",
+            "Expandere for detaljer",
+            "CSV-nedlasting"
+        ],
+        "tilbakemeldinger": [
+            "Suksess-meldinger",
+            "Feilmeldinger",
+            "Valideringsadvarsler",
+            "Anbefalinger"
+        ]
+    },
+
+    "sikkerhet": {
+        "validering": [
+            "Bruker-autentisering",
+            "Kamp-tilgang",
+            "Inndata-validering"
+        ],
+        "feilhåndtering": [
+            "Logging av feil",
+            "Brukervennlige meldinger",
+            "Databasefeil-håndtering"
+        ]
+    },
+
+    "integrasjon": {
+        "avhengigheter": [
+            "Kamptropp-modul",
+            "Oppsett-modul",
+            "Database-handler"
+        ],
+        "navigasjon": [
+            "Lenke til oppsett",
+            "Lenke til kamptropp",
+            "Lenke til formation"
+        ]
+    }
+}
+
+# Regler for formasjonsvisning
+formation_rules:
+  field_dimensions:
+    width: 800
+    height: 1000
+    margin: 50
+    sixteen_meter_height: 150
+    sixteen_meter_width: 400
+  coordinate_system:
+    y_axis:
+      range: [0, 100]
+      keeper_position: 90
+      forward_position: 25
+    x_axis:
+      range: [0, 100]
+      left_wing: 20
+      right_wing: 80
+  scaling:
+    player_circle_radius: 35
+    text_size: "18px"
+    bench_offset: 50
+    bench_spacing: 60
+  colors:
+    field: "#2e8b57"
+    lines: "white"
+    player:
+      fill: "white"
+      stroke: "black"
+
+# Regler for banens dimensjoner og skalering
+banens_dimensjoner_og_skalering:
+  - width: 800
+  - height: 1000
+  - margin: 50
+  - sixteen_meter_height: 150
+  - sixteen_meter_width: 400
+  - coordinate_system:
+    - y_axis:
+      - range: [0, 100]
+      - keeper_position: 90
+      - forward_position: 25
+    - x_axis:
+      - range: [0, 100]
+      - left_wing: 20
+      - right_wing: 80
+  - scaling:
+    - player_circle_radius: 35
+    - text_size: "18px"
+    - bench_offset: 50
+    - bench_spacing: 60
+  - colors:
+    - field: "#2e8b57"
+    - lines: "white"
+    - player:
+      - fill: "white"
+      - stroke: "black"
+
+# Regler for posisjoner i min_kamp
+[posisjoner]
+# På bytteplan-siden: Bruk posisjoner for å gjøre det lettere å sortere spillere
+bytteplan_side = "Bruk posisjoner (Keeper, Forsvar, Midtbane, Angrep) for å sortere spillere"
+
+# På formasjon-siden: IKKE bruk posisjoner fra databasen
+formasjon_side = "IKKE bruk posisjoner fra databasen - la brukeren plassere spillere fritt for økt fleksibilitet"
+
+# Generelle regler for formasjonssiden
+[formasjon_regler]
+# Koordinatsystem
+koordinater = "y-akse: 0-100 (keeper nederst, spiss øverst), x-akse: 0-100 (venstre til høyre)"
+
+# Visuelle elementer
+bane = "Grønn bakgrunn (#2e8b57), hvite linjer, 16-meter felt"
+spillere = "Hvite sirkler med svart kant, navn i midten"
+tomme_posisjoner = "Stiplede sirkler som viser mulige posisjoner"
+
+# Drag-and-drop
+plassering = "Spillere kan dras fra venstre sidelinje til ønskede posisjoner på banen"
+benk = "Spillere på benken vises langs høyre sidelinje"
+
+# Regler for formasjonssiden
+[formation_page]
+# Spillere velges først i kamptropp
+# Bytteplan styrer når spillere er på/av banen
+# Formasjonssiden viser spillere basert på bytteplan status
+
+# Banens elementer
+bane_elementer = {
+    "vis_hele_banen": true,  # VIKTIG: Vis alltid hele banen
+    "obligatoriske_elementer": [
+        "midtlinje",           # Skal ALLTID vises
+        "øvre_16meter",        # Skal ALLTID vises
+        "nedre_16meter",       # Skal ALLTID vises
+        "ytre_ramme"          # Skal ALLTID vises
+    ]
+}
+
+# Koordinatsystem
+y_range = [0, 100]  # 0 = topp av banen, 100 = bunn av banen
+keeper_y = 90       # Keeper plasseres nederst
+spiss_y = 25       # Spiss plasseres øverst
+
+# Standard formasjoner
+formations = {
+    "4-4-2": {
+        "keeper": [50, 90],
+        "forsvar": [[20, 75], [40, 75], [60, 75], [80, 75]],
+        "midtbane": [[20, 50], [40, 50], [60, 50], [80, 50]],
+        "angrep": [[35, 25], [65, 25]]
+    },
+    "4-3-3": {
+        "keeper": [50, 90],
+        "forsvar": [[20, 75], [40, 75], [60, 75], [80, 75]],
+        "midtbane": [[30, 50], [50, 50], [70, 50]],
+        "angrep": [[25, 25], [50, 25], [75, 25]]
+    },
+    "4-2-3-1": {
+        "keeper": [50, 90],
+        "forsvar": [[20, 75], [40, 75], [60, 75], [80, 75]],
+        "def_mid": [[35, 60], [65, 60]],
+        "off_mid": [[25, 40], [50, 35], [75, 40]],
+        "spiss": [[50, 25]]
+    },
+    "3-5-2": {
+        "keeper": [50, 90],
+        "forsvar": [[30, 75], [50, 75], [70, 75]],
+        "midtbane": [[20, 50], [35, 50], [50, 50], [65, 50], [80, 50]],
+        "angrep": [[35, 25], [65, 25]]
+    }
+}
+
+# Visuell representasjon
+field_width = 600
+field_height = 900
+margin = 40
+player_radius = 25
+background_color = "#2e8b57"
+line_color = "white"
+player_color = "white"
+player_border = "black"
+
+# Drag and drop
+snap_distance = 50  # Maksimal avstand for å snappe til posisjon

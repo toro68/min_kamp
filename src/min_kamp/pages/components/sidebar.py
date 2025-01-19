@@ -3,10 +3,10 @@ Sidebar-komponent for navigasjon.
 """
 
 import logging
-import streamlit as st
 
-from min_kamp.db.handlers.app_handler import AppHandler
+import streamlit as st
 from min_kamp.db.auth.auth_views import check_auth
+from min_kamp.db.handlers.app_handler import AppHandler
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +33,65 @@ def setup_sidebar(app_handler: AppHandler) -> None:
         with st.sidebar:
             st.title("Min Kamp")
 
-            # Hent gjeldende side fra session state
-            selected_page = st.session_state.get("selected_page", "oppsett")
+            # Hent gjeldende side, kamp ID og bruker ID fra query parameters
+            selected_page = st.query_params.get("page", "oppsett")
+            kamp_id = st.query_params.get("kamp_id")
+            bruker_id = st.query_params.get("bruker_id")
+
+            if not bruker_id:
+                logger.warning("Ingen bruker_id i query parameters")
+                st.error("Ingen bruker funnet")
+                return
 
             # Navigasjonsknapper
-            if st.button(
-                "Oppsett", type="primary" if selected_page == "oppsett" else "secondary"
-            ):
-                st.session_state.selected_page = "oppsett"
+            is_active = selected_page == "oppsett"
+            btn_type = "primary" if is_active else "secondary"
+            if st.button("Oppsett", type=btn_type):
+                query_params = {"page": "oppsett"}
+                if kamp_id:
+                    query_params["kamp_id"] = kamp_id
+                query_params["bruker_id"] = bruker_id
+                st.query_params.update(query_params)
                 st.rerun()
 
-            if st.button(
-                "Kamptropp",
-                type="primary" if selected_page == "kamptropp" else "secondary",
-            ):
-                st.session_state.selected_page = "kamptropp"
+            is_active = selected_page == "kamptropp"
+            btn_type = "primary" if is_active else "secondary"
+            if st.button("Kamptropp", type=btn_type):
+                query_params = {"page": "kamptropp"}
+                if kamp_id:
+                    query_params["kamp_id"] = kamp_id
+                query_params["bruker_id"] = bruker_id
+                st.query_params.update(query_params)
                 st.rerun()
 
-            if st.button(
-                "Kamp", type="primary" if selected_page == "kamp" else "secondary"
-            ):
-                st.session_state.selected_page = "kamp"
+            is_active = selected_page == "kamp"
+            btn_type = "primary" if is_active else "secondary"
+            if st.button("Kamp", type=btn_type):
+                query_params = {"page": "kamp"}
+                if kamp_id:
+                    query_params["kamp_id"] = kamp_id
+                query_params["bruker_id"] = bruker_id
+                st.query_params.update(query_params)
                 st.rerun()
 
-            if st.button(
-                "Bytteplan",
-                type="primary" if selected_page == "bytteplan" else "secondary",
-            ):
-                st.session_state.selected_page = "bytteplan"
+            is_active = selected_page == "bytteplan"
+            btn_type = "primary" if is_active else "secondary"
+            if st.button("Bytteplan", type=btn_type):
+                query_params = {"page": "bytteplan"}
+                if kamp_id:
+                    query_params["kamp_id"] = kamp_id
+                query_params["bruker_id"] = bruker_id
+                st.query_params.update(query_params)
+                st.rerun()
+
+            is_active = selected_page == "formasjon"
+            btn_type = "primary" if is_active else "secondary"
+            if st.button("Formasjon", type=btn_type):
+                query_params = {"page": "formasjon"}
+                if kamp_id:
+                    query_params["kamp_id"] = kamp_id
+                query_params["bruker_id"] = bruker_id
+                st.query_params.update(query_params)
                 st.rerun()
 
             # Logg ut-knapp

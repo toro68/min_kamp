@@ -3,13 +3,14 @@ Rendrer sider i applikasjonen.
 """
 
 import logging
-import streamlit as st
 
+import streamlit as st
 from min_kamp.pages.bytteplan_page import vis_bytteplan_side
-from min_kamp.pages.kamptropp_page import vis_kamptropp_side
+from min_kamp.pages.formation_page import vis_formasjon_side
 from min_kamp.pages.kamp_page import vis_kamp_side
+from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.login_page import vis_login_side
-from min_kamp.pages.oppsett_page import render_oppsett_page
+from min_kamp.pages.oppsett_page import vis_oppsett_side
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,8 @@ PAGES = {
     "kamptropp": vis_kamptropp_side,
     "bytteplan": vis_bytteplan_side,
     "kamp": vis_kamp_side,
-    "oppsett": render_oppsett_page,
+    "oppsett": vis_oppsett_side,
+    "formasjon": vis_formasjon_side,
 }
 
 

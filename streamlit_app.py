@@ -27,6 +27,7 @@ from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
 from min_kamp.pages.bytteplan_page import vis_bytteplan_side
 from min_kamp.pages.components.sidebar import setup_sidebar
+from min_kamp.pages.formation_page import vis_formasjon_side
 from min_kamp.pages.kamp_page import vis_kamp_side
 from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.oppsett_page import vis_oppsett_side
@@ -98,8 +99,8 @@ logging.debug("Sidebar satt opp")
 # Vis hovedsiden
 st.title("Min Kamp")
 
-# Vis valgt side basert på session state
-selected_page = st.session_state.get("selected_page", "oppsett")
+# Vis valgt side basert på query parameters
+selected_page = st.query_params.get("page", "oppsett")
 logging.debug(f"Viser side: {selected_page}")
 
 if selected_page == "oppsett":
@@ -110,6 +111,8 @@ elif selected_page == "kamp":
     vis_kamp_side(app_handler)
 elif selected_page == "bytteplan":
     vis_bytteplan_side(app_handler)
+elif selected_page == "formasjon":
+    vis_formasjon_side(app_handler)
 
 logging.debug("Side rendret")
 logging.debug("App ferdig lastet")

@@ -3,10 +3,9 @@ Autentisering views.
 """
 
 import logging
-import streamlit as st
 
+import streamlit as st
 from min_kamp.db.handlers.app_handler import AppHandler
-from min_kamp.utils.session_state import safe_get_session_state
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +31,15 @@ def vis_login_side(app_handler: AppHandler) -> None:
             st.error("Feil brukernavn eller passord")
             return
 
-        # Lagre bruker i session state
-        st.session_state["bruker_id"] = bruker["id"]
-        st.session_state["brukernavn"] = bruker["brukernavn"]
+        # Lagre bruker i query parameters
+        st.query_params["bruker_id"] = str(bruker["id"])
+        st.query_params["brukernavn"] = bruker["brukernavn"]
         st.rerun()
 
     st.markdown("---")
 
     if st.button("Opprett ny bruker"):
-        st.session_state["vis_opprett_bruker"] = True
+        st.query_params["vis_opprett_bruker"] = "true"
         st.rerun()
 
 
@@ -73,13 +72,13 @@ def vis_opprett_bruker_side(app_handler: AppHandler) -> None:
             return
 
         st.success("Bruker opprettet!")
-        st.session_state["vis_opprett_bruker"] = False
+        st.query_params.pop("vis_opprett_bruker", None)
         st.rerun()
 
     st.markdown("---")
 
     if st.button("Tilbake til login"):
-        st.session_state["vis_opprett_bruker"] = False
+        st.query_params.pop("vis_opprett_bruker", None)
         st.rerun()
 
 
@@ -89,7 +88,7 @@ def vis_auth_side(app_handler: AppHandler) -> None:
     Args:
         app_handler: App handler
     """
-    if safe_get_session_state("vis_opprett_bruker", False):
+    if st.query_params.get("vis_opprett_bruker") == "true":
         vis_opprett_bruker_side(app_handler)
     else:
         vis_login_side(app_handler)

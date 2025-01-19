@@ -5,11 +5,8 @@ Auth views.
 import logging
 
 import streamlit as st
-
 from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.handlers.auth_handler import AuthHandler
-from min_kamp.utils.session_state import safe_get_session_state
-from min_kamp.utils.streamlit_utils import set_session_state
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +20,13 @@ def check_auth(auth_handler: AuthHandler) -> bool:
     Returns:
         bool: True hvis bruker er autentisert
     """
-    bruker_state = safe_get_session_state("bruker_id")
-    if not bruker_state or not bruker_state.success:
+    bruker_id_str = st.query_params.get("bruker_id")
+    if not bruker_id_str:
         return False
 
-    bruker_id = bruker_state.value
-    if not bruker_id:
+    try:
+        bruker_id = int(bruker_id_str)
+    except (ValueError, TypeError):
         return False
 
     bruker = auth_handler.hent_bruker(bruker_id)
@@ -55,7 +53,7 @@ def vis_login_side(app_handler: AppHandler) -> None:
             if submit and brukernavn and passord:
                 bruker = app_handler.auth_handler.sjekk_passord(brukernavn, passord)
                 if bruker:
-                    set_session_state("bruker_id", bruker["id"])
+                    st.query_params["bruker_id"] = str(bruker["id"])
                     st.success("Innlogget!")
                     st.rerun()
                 else:
@@ -79,7 +77,7 @@ def vis_login_side(app_handler: AppHandler) -> None:
                         nytt_brukernavn, nytt_passord
                     )
                     if bruker_id:
-                        set_session_state("bruker_id", bruker_id)
+                        st.query_params["bruker_id"] = str(bruker_id)
                         st.success("Bruker opprettet!")
                         st.rerun()
                     else:

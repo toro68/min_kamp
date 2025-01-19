@@ -6,8 +6,9 @@ import logging
 import threading
 import traceback
 from typing import Any, Dict, Optional
-import bcrypt
 
+import bcrypt
+import streamlit as st
 from min_kamp.db.errors import DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -283,8 +284,6 @@ class AuthHandler:
             raise DatabaseError(f"Kunne ikke opprette bruker: {e}")
 
     def logg_ut(self) -> None:
-        """Logger ut brukeren ved å fjerne bruker_id fra session state."""
-        from min_kamp.utils.streamlit_utils import set_session_state
-
-        set_session_state("bruker_id", None)
+        """Logger ut brukeren ved å fjerne bruker_id fra query parameters."""
+        st.query_params.clear()
         logger.debug("Bruker logget ut")

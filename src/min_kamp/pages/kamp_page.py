@@ -3,106 +3,69 @@ Kamp side.
 """
 
 import logging
-from typing import cast
 
 import streamlit as st
-
-from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.auth.auth_views import check_auth
-from min_kamp.utils.session_state import safe_get_session_state
+from min_kamp.db.handlers.app_handler import AppHandler
 
 logger = logging.getLogger(__name__)
 
 
 def vis_kamp_side(app_handler: AppHandler) -> None:
-    """Rendrer kamp-siden.
+    """Viser kamp siden.
 
     Args:
-        app_handler: AppHandler instans
+        app_handler: App handler
     """
+    if not check_auth(app_handler.auth_handler):
+        return
+
+    st.title("Kamp")
+
+    # Hent kamp ID fra query parameters
+    kamp_id = st.query_params.get("kamp_id")
+    if not kamp_id:
+        st.warning("Ingen kamp valgt")
+        return
+
     try:
-        # Sjekk autentisering
-        auth_handler = app_handler.auth_handler
-        if not check_auth(auth_handler):
-            logger.debug("Bruker er ikke autentisert")
-            return
+        kamp_id = int(kamp_id)
+    except ValueError:
+        st.error("Ugyldig kamp ID")
+        return
 
-        # Hent aktiv kamp
-        current_kamp_id = safe_get_session_state("current_kamp_id")
-        if not current_kamp_id or not current_kamp_id.success:
-            st.warning("Ingen aktiv kamp valgt")
-            return
+    kamp = app_handler.kamp_handler.hent_kamp(kamp_id)
+    if not kamp:
+        st.error(f"Fant ikke kamp med ID {kamp_id}")
+        return
 
-        kamp_id = cast(int, current_kamp_id.value)
-        if not kamp_id:
-            st.warning("Ugyldig kamp-ID")
-            return
+    st.write(f"Motstander: {kamp['motstander']}")
+    st.write(f"Dato: {kamp['dato']}")
+    st.write(f"Type: {'Hjemmekamp' if kamp['hjemmebane'] else 'Bortekamp'}")
 
-        # Hent kamp-info
-        kamp_info = app_handler.kamp_handler.hent_kamp(kamp_id)
-        if not kamp_info:
-            st.error("Kunne ikke hente kampinfo")
-            return
+    # Hent bruker ID fra query parameters
+    bruker_id = st.query_params.get("bruker_id")
+    if not bruker_id:
+        st.error("Ingen bruker funnet")
+        return
 
-        # Vis dato
-        st.header(f"Dato: {kamp_info['dato']}")
+    try:
+        bruker_id = int(bruker_id)
+    except ValueError:
+        st.error("Ugyldig bruker ID")
+        return
 
-        # Vis hjemme/borte
-        st.subheader("Hjemmekamp" if kamp_info["hjemmebane"] else "Bortekamp")
+    # Hent kamptropp
+    kamptropp = app_handler.kamp_handler.hent_kamptropp(kamp_id, bruker_id)
+    if not kamptropp:
+        st.error("Kunne ikke hente kamptropp")
+        return
 
-        # Hent kamptropp
-        bruker_id_result = safe_get_session_state("bruker_id")
-        if not bruker_id_result or not bruker_id_result.success:
-            st.error("Ingen bruker funnet")
-            return
-        bruker_id = cast(int, bruker_id_result.value)
-
-        kamptropp = app_handler.kamp_handler.hent_kamptropp(kamp_id, bruker_id)
-        if not kamptropp:
-            st.error("Kunne ikke hente kamptropp")
-            return
-
-        # Vis antall spillere
-        st.subheader("Antall spillere")
-        antall = sum(
-            len([s for s in spillere if s["er_med"]])
-            for spillere in kamptropp["spillere"].values()
-        )
-        st.write(str(antall))
-
-        # Grupper spillere etter posisjon
-        keeper = kamptropp["spillere"]["Keeper"]
-        forsvar = kamptropp["spillere"]["Forsvar"]
-        midtbane = kamptropp["spillere"]["Midtbane"]
-        angrep = kamptropp["spillere"]["Angrep"]
-
-        # Vis spillere etter posisjon
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.subheader("Keeper")
-            for spiller in keeper:
-                if spiller["er_med"]:
-                    st.write(f"- {spiller['navn']}")
-
-        with col2:
-            st.subheader("Forsvar")
-            for spiller in forsvar:
-                if spiller["er_med"]:
-                    st.write(f"- {spiller['navn']}")
-
-        with col3:
-            st.subheader("Midtbane")
-            for spiller in midtbane:
-                if spiller["er_med"]:
-                    st.write(f"- {spiller['navn']}")
-
-        with col4:
-            st.subheader("Angrep")
-            for spiller in angrep:
-                if spiller["er_med"]:
-                    st.write(f"- {spiller['navn']}")
-
-    except Exception as e:
-        logger.error("Feil ved rendering av kamp-side: %s", e)
-        st.error("En feil oppstod ved lasting av siden")
+    # Vis spillere etter posisjon
+    st.header("Kamptropp")
+    for posisjon in ["Keeper", "Forsvar", "Midtbane", "Angrep"]:
+        st.subheader(posisjon)
+        spillere = kamptropp["spillere"][posisjon]
+        for spiller in spillere:
+            if spiller["er_med"]:
+                st.write(f"- {spiller['navn']}")

@@ -8,247 +8,143 @@ Se spesielt:
 """
 
 import logging
-from collections import defaultdict
-from typing import Any, Dict, List, TypedDict
+from typing import Dict, List
 
-import pandas as pd
-
+import streamlit as st
 from min_kamp.db.handlers.bytteplan_handler import BytteplanHandler
-from min_kamp.utils.streamlit_utils import get_session_state
 
 logger = logging.getLogger("kampplanlegger")
 
 
-class SpillerStats(TypedDict):
-    """Type for spillerstatistikk"""
+def tell_spillere_per_periode(
+    spilletider: Dict[str, List[bool]], antall_perioder: int
+) -> Dict[int, int]:
+    """
+    Teller antall spillere per periode.
 
-    perioder_spilt: int
-    prosent_spilletid: float
-    perioder: List[bool]
+    Args:
+        spilletider: Dict med spilletider per spiller
+        antall_perioder: Antall perioder totalt
 
-
-class BytteplanUtils:
-    """Verktøy for håndtering av bytteplan"""
-
-    def __init__(self, bytteplan_handler: BytteplanHandler):
-        """
-        Initialiserer BytteplanUtils.
-
-        Args:
-            bytteplan_handler: Handler for bytteplan-operasjoner
-        """
-        self.handler = bytteplan_handler
-
-    @staticmethod
-    def generer_posisjonssortert_df(
-        spillere: List[Dict[str, Any]], kun_kamptropp: bool = True
-    ) -> pd.DataFrame:
-        """
-        Genererer en DataFrame med spillere sortert etter posisjon
-
-        Args:
-            spillere: Liste med spillerdata
-            kun_kamptropp: Hvis True, vis bare spillere i kamptroppen
-
-        Returns:
-            DataFrame med kolonner [navn, posisjon, er_paa]
-        """
-        if not spillere:
-            return pd.DataFrame(columns=["navn", "posisjon", "er_paa"])
-
-        posisjon_orden = {
-            "Keeper": 1,
-            "Forsvar": 2,
-            "Midtbane": 3,
-            "Angrep": 4,
-            "": 5,  # For ukjente posisjoner
-        }
-
-        # Konverter til DataFrame og håndter manglende verdier
-        df = pd.DataFrame(spillere)
-
-        # Filtrer på kamptropp hvis spesifisert
-        if kun_kamptropp and "i_kamptropp" in df.columns:
-            df = df[df["i_kamptropp"]]
-
-        # Sett standardverdier for manglende kolonner
-        if "posisjon" not in df.columns:
-            df["posisjon"] = ""
-        if "navn" not in df.columns:
-            df["navn"] = "Ukjent"
-        if "er_paa" not in df.columns:
-            df["er_paa"] = False
-
-        # Håndter ukjente posisjoner
-        df["posisjon"] = df["posisjon"].fillna("")
-
-        # Sorter etter posisjon og navn
-        df["posisjon_orden"] = df["posisjon"].map(posisjon_orden)
-        df = df.sort_values(["posisjon_orden", "navn"])
-
-        return df[["navn", "posisjon", "er_paa"]]
-
-    @staticmethod
-    def valider_bytteplan(
-        bytter: List[Dict[str, Any]], min_spillere: int, max_spillere: int
-    ) -> Dict[str, Any]:
-        """
-        Validerer at bytteplan følger reglene
-
-        Args:
-            bytter: Liste med bytter som skal valideres
-            min_spillere: Minimum antall spillere på banen
-            max_spillere: Maksimum antall spillere på banen
-
-        Returns:
-            Dict med valideringsresultat og eventuelle feilmeldinger
-        """
-        resultat: Dict[str, Any] = {
-            "gyldig": True,
-            "feilmeldinger": [],  # Initialiserer som tom liste
-        }
-
-        # Grupper bytter per periode
-        for periode, periode_bytter in pd.DataFrame(bytter).groupby("periode"):
-            antall_paa_banen = len(periode_bytter[periode_bytter["er_paa"]])
-
-            if antall_paa_banen < min_spillere:
-                resultat["gyldig"] = False
-                resultat["feilmeldinger"].append(
-                    f"For få spillere på banen i periode {periode} "
-                    f"({antall_paa_banen})"
-                )
-
-            if antall_paa_banen > max_spillere:
-                resultat["gyldig"] = False
-                resultat["feilmeldinger"].append(
-                    f"For mange spillere på banen i periode {periode} "
-                    f"({antall_paa_banen})"
-                )
-
-        return resultat
-
-    @staticmethod
-    def beregn_spilletid(
-        bytteplan: List[Dict[str, Any]], antall_perioder: int
-    ) -> Dict[str, SpillerStats]:
-        """
-        Beregner spilletid for hver spiller basert på bytteplan.
-
-        Args:
-            bytteplan: Liste med bytter per periode
-            antall_perioder: Totalt antall perioder i kampen
-
-        Returns:
-            Dict med spillerstatistikk per spiller-ID
-        """
-        spilletid: Dict[str, SpillerStats] = defaultdict(
-            lambda: {
-                "perioder_spilt": 0,
-                "prosent_spilletid": 0.0,
-                "perioder": [False] * antall_perioder,
-            }
+    Returns:
+        Dict med antall spillere per periode
+    """
+    resultat = {}
+    for periode in range(antall_perioder):
+        antall = sum(
+            1
+            for spiller_perioder in spilletider.values()
+            if (periode < len(spiller_perioder) and spiller_perioder[periode])
         )
+        resultat[periode] = antall
+    return resultat
 
-        # Grupper bytter per periode og spiller
-        for bytte in bytteplan:
-            spiller_id = bytte["spiller_id"]
-            periode = bytte["periode"]
-            er_paa = bytte["er_paa"]
 
-            if spiller_id not in spilletid:
-                spilletid[spiller_id] = {
-                    "perioder_spilt": 0,
-                    "prosent_spilletid": 0.0,
-                    "perioder": [False] * antall_perioder,
+def oppdater_spilletid_summer(spilletid_handler: BytteplanHandler) -> bool:
+    """
+    Oppdaterer spilletid-summer i query parameters.
+
+    Args:
+        spilletid_handler: Handler for spilletid-operasjoner
+
+    Returns:
+        bool: True hvis oppdatering var vellykket
+    """
+    try:
+        kamp_id = st.query_params.get("kamp_id")
+        if not kamp_id or not str(kamp_id).isdigit():
+            logger.warning("Ingen gyldig kamp_id funnet")
+            return False
+
+        # Hent data via handler
+        spilletid_data = spilletid_handler.hent_spilletid(int(str(kamp_id)))
+        if spilletid_data is None:
+            logger.error("Kunne ikke hente spilletid-data")
+            return False
+
+        # Finn spilletid for gjeldende spiller
+        spiller_id = st.query_params.get("spiller_id")
+        if not spiller_id:
+            logger.warning("Ingen spiller_id funnet")
+            return False
+
+        spiller_spilletid = None
+        for spilletid_rad in spilletid_data:
+            if spilletid_rad["spiller_id"] == int(spiller_id):
+                spiller_spilletid = spilletid_rad["minutter"]
+                break
+
+        if spiller_spilletid is None:
+            logger.warning("Ingen spilletid funnet for spiller %s", spiller_id)
+            return False
+
+        # Oppdater query parameters
+        st.query_params["spilletid"] = str(spiller_spilletid)
+        st.query_params["perioder"] = ",".join(str(i) for i in range(spiller_spilletid))
+
+        # Tell opp spillere per periode
+        spillere_per_periode = tell_spillere_per_periode(
+            {str(spiller_id): [True] * spiller_spilletid}, spiller_spilletid
+        )
+        st.query_params["spillere_per_periode"] = str(spillere_per_periode)
+
+        logger.debug("Oppdaterte spilletid: %s", spiller_spilletid)
+        logger.debug("Oppdaterte spillere per periode: %s", spillere_per_periode)
+        return True
+
+    except Exception as e:
+        logger.error("Feil ved oppdatering av spilletid: %s", e)
+        return False
+
+
+def hent_bytter(spillere: dict, periode_idx: int) -> tuple[list[str], list[str]]:
+    """Henter bytter inn og ut mellom to perioder.
+
+    Args:
+        spillere: Dictionary med spillerdata i formatet:
+            {
+                "spillernavn": {
+                    "perioder": {0: bool, 1: bool, ...}  # True hvis på banen
                 }
+            }
+        periode_idx: Perioden vi vil sjekke bytter for (sammenligner med forrige periode)
 
-            spilletid[spiller_id]["perioder"][periode] = er_paa
-            if er_paa:
-                spilletid[spiller_id]["perioder_spilt"] += 1
+    Returns:
+        Tuple med to lister: (bytter_inn, bytter_ut)
+        Hver liste inneholder spillernavn som strings
+    """
+    bytter_inn = []
+    bytter_ut = []
 
-        # Beregn prosent spilletid
-        for spiller_stats in spilletid.values():
-            spiller_stats["prosent_spilletid"] = (
-                float(spiller_stats["perioder_spilt"]) / float(antall_perioder) * 100.0
-            )
+    if periode_idx > 0:  # Sjekker bare bytter etter første periode
+        for navn, spiller in spillere.items():
+            forrige = spiller["perioder"].get(periode_idx - 1, False)
+            denne = spiller["perioder"].get(periode_idx, False)
+            if not forrige and denne:  # Inn på banen
+                bytter_inn.append(navn)
+            elif forrige and not denne:  # Ut av banen
+                bytter_ut.append(navn)
 
-        return dict(spilletid)
+    return sorted(bytter_inn), sorted(bytter_ut)
 
-    @staticmethod
-    def generer_spilleroversikt(
-        kamptropp: Dict[str, Dict[str, Any]],
-        alle_spilletider: Dict[str, List[bool]],
-        antall_perioder: int,
-        periode_lengde: int,
-    ) -> pd.DataFrame:
-        """
-        Genererer en DataFrame med spilleroversikt for bytteplan
 
-        Args:
-            kamptropp: Dict med spillerinfo per spiller-ID
-            alle_spilletider: Dict med spilletider per spiller-ID
-            antall_perioder: Totalt antall perioder
-            periode_lengde: Lengde på hver periode i minutter
+def formater_bytter(bytter_inn: list[str], bytter_ut: list[str]) -> str:
+    """Formaterer bytter til en lesbar streng.
 
-        Returns:
-            DataFrame med spilleroversikt
-        """
-        data = []
-        for spiller_id, info in kamptropp.items():
-            spilletider = alle_spilletider.get(spiller_id, [False] * antall_perioder)
-            total_tid = sum(1 for x in spilletider if x) * periode_lengde
-            current_periode_result = get_session_state("current_periode", default=0)
-            current_periode = (
-                current_periode_result.value if current_periode_result.success else 0
-            )
-            er_paa = bool(
-                spilletider[int(current_periode)]
-                if isinstance(current_periode, (int, float))
-                else False
-            )
+    Args:
+        bytter_inn: Liste med navn på spillere som kommer inn
+        bytter_ut: Liste med navn på spillere som går ut
 
-            # Sikre at posisjon alltid er tilgjengelig
-            posisjon = info.get(
-                "posisjon", "Benk"
-            )  # Standardverdi hvis posisjon mangler
+    Returns:
+        Formatert streng med bytter, f.eks. "INN: Spiller1, Spiller2 | UT: Spiller3"
+        Returnerer "-" hvis ingen bytter
+    """
+    if not bytter_inn and not bytter_ut:
+        return "-"
 
-            data.append(
-                {
-                    "spiller_id": spiller_id,
-                    "navn": info.get(
-                        "navn", "Ukjent"
-                    ),  # Standardverdi hvis navn mangler
-                    "posisjon": posisjon,
-                    "total_spilletid": total_tid,
-                    "er_paa": er_paa,
-                }
-            )
-
-        if not data:
-            # Returner tom DataFrame med riktige kolonner
-            return pd.DataFrame(
-                columns=[
-                    "spiller_id",
-                    "navn",
-                    "posisjon",
-                    "total_spilletid",
-                    "er_paa",
-                ]
-            )
-
-        return pd.DataFrame(data)
-
-    @staticmethod
-    def _valider_byttedata(bytte: Dict[str, Any]) -> bool:
-        """
-        Validerer at byttedata inneholder alle nødvendige felter
-
-        Args:
-            bytte: Dict med byttedata som skal valideres
-
-        Returns:
-            True hvis alle nødvendige felter er til stede
-        """
-        required_fields = {"spiller_id", "periode", "er_paa"}
-        return all(field in bytte for field in required_fields)
+    bytter_deler = []
+    if bytter_inn:
+        bytter_deler.append(f"INN: {', '.join(bytter_inn)}")
+    if bytter_ut:
+        bytter_deler.append(f"UT: {', '.join(bytter_ut)}")
+    return " | ".join(bytter_deler)
