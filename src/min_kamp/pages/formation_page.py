@@ -201,8 +201,12 @@ def lag_fotballbane_html(
     # Generer HTML for spillerposisjonene
     fotballbane = ""
     if spillere and posisjoner:
-        for spiller, posisjon in zip(spillere, posisjoner):
-            x, y = beregn_spiller_posisjon(posisjon[0], posisjon[1], width, height)
+        for spiller, pos in zip(spillere, posisjoner):
+            if not isinstance(pos, tuple) or len(pos) != 2:
+                logger.warning(f"Ugyldig posisjon for spiller {spiller['id']}: {pos}")
+                continue
+
+            x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height)
             fotballbane += f"""
             <div class="player" draggable="true" data-player-id="{spiller['id']}"
                  style="position: absolute; left: {x-spiller_radius}px; top: {y-spiller_radius}px;
@@ -234,7 +238,6 @@ def lag_fotballbane_html(
     <html>
         <head>
             <meta charset="utf-8">
-            <script src="https://streamlit.io/static/static/js/client.js"></script>
             <style>
                 .lagre-knapp {{
                     position: fixed;
@@ -244,17 +247,32 @@ def lag_fotballbane_html(
                     background-color: #4CAF50;
                     color: white;
                     border: none;
-                    border-radius: 5px;
+                    border-radius: 4px;
                     cursor: pointer;
-                    font-size: 16px;
                 }}
                 .lagre-knapp:hover {{
                     background-color: #45a049;
                 }}
                 .player {{
+                    position: absolute;
                     cursor: move;
                     border: 1px solid black;
                     z-index: 100;
+                    background-color: white;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: black;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    touch-action: none;
+                }}
+                .dragging {{
+                    opacity: 0.8;
+                    pointer-events: none;
                 }}
             </style>
         </head>
@@ -291,14 +309,18 @@ def lag_fotballbane_html(
             </div>
             <button class="lagre-knapp" onclick="lagrePosisjoner()">Lagre posisjoner</button>
             <script>
+                console.log('Laster drag-and-drop funksjonalitet...');
+
                 const kampId = {kamp_id or 'null'};
                 const periodeId = {periode_id or 'null'};
-
-                // Objekt for å lagre spillerposisjoner
                 const spillerPosisjoner = {{}};
 
-                // Funksjon for å beregne posisjon i prosent
+                function debugLog(melding) {{
+                    console.log(`[DEBUG] ${{melding}}`);
+                }}
+
                 function beregnPosisjonProsent(element) {{
+                    debugLog('Beregner posisjon i prosent');
                     const rect = element.getBoundingClientRect();
                     const bane = document.querySelector('svg');
                     const baneRect = bane.getBoundingClientRect();
@@ -306,16 +328,17 @@ def lag_fotballbane_html(
                     const x = ((rect.left + rect.width/2) - baneRect.left) / baneRect.width * 100;
                     const y = ((rect.top + rect.height/2) - baneRect.top) / baneRect.height * 100;
 
+                    debugLog(`Posisjon: x=${{x}}, y=${{y}}`);
                     return {{ x, y }};
                 }}
 
-                // Funksjon for å lagre en spillers posisjon
                 function lagreSpillerPosisjon(spillerId, posisjon) {{
+                    debugLog(`Lagrer posisjon for spiller ${{spillerId}}: ${{JSON.stringify(posisjon)}}`);
                     spillerPosisjoner[spillerId] = posisjon;
                 }}
 
-                // Funksjon for å lagre alle posisjoner
                 function lagrePosisjoner() {{
+                    debugLog('Lagrer alle posisjoner');
                     const data = {{
                         type: 'lagre_posisjon',
                         kamp_id: kampId,
@@ -323,78 +346,82 @@ def lag_fotballbane_html(
                         posisjoner: spillerPosisjoner
                     }};
 
-                    // Oppdater URL med banekart data
-                    const params = new URLSearchParams(document.location.search);
+                    const params = new URLSearchParams(window.location.search);
                     params.set(`banekart_${{periodeId}}`, JSON.stringify(data));
-                    document.location.search = params.toString();
+                    window.location.search = params.toString();
                 }}
 
-                // Globale variabler for drag-and-drop
-                let active = false;
-                let draggedElement = null;
-                let currentX = 0;
-                let currentY = 0;
-                let initialX = 0;
-                let initialY = 0;
+                document.querySelectorAll('.player').forEach(player => {{
+                    let isDragging = false;
+                    let currentX;
+                    let currentY;
+                    let initialX;
+                    let initialY;
+                    let xOffset = 0;
+                    let yOffset = 0;
 
-                function setTranslate(x, y, el) {{
-                    el.style.transform = `translate3d(${{x}}px, ${{y}}px, 0)`;
-                }}
-
-                function dragStart(e) {{
-                    if (e.type === "touchstart") {{
-                        initialX = e.touches[0].clientX;
-                        initialY = e.touches[0].clientY;
-                    }} else {{
-                        initialX = e.clientX;
-                        initialY = e.clientY;
-                    }}
-
-                    if (e.target.classList.contains("player")) {{
-                        draggedElement = e.target;
-                        active = true;
-                    }}
-                }}
-
-                function drag(e) {{
-                    if (active) {{
-                        e.preventDefault();
-
-                        if (e.type === "touchmove") {{
-                            currentX = e.touches[0].clientX - initialX;
-                            currentY = e.touches[0].clientY - initialY;
+                    function dragStart(e) {{
+                        debugLog('Starter drag');
+                        if (e.type === "touchstart") {{
+                            initialX = e.touches[0].clientX - xOffset;
+                            initialY = e.touches[0].clientY - yOffset;
                         }} else {{
-                            currentX = e.clientX - initialX;
-                            currentY = e.clientY - initialY;
+                            initialX = e.clientX - xOffset;
+                            initialY = e.clientY - yOffset;
                         }}
 
-                        setTranslate(currentX, currentY, draggedElement);
+                        if (e.target === player) {{
+                            isDragging = true;
+                            player.classList.add('dragging');
+                            debugLog('Spiller draging startet');
+                        }}
                     }}
-                }}
 
-                function dragEnd(e) {{
-                    if (active && draggedElement) {{
-                        const pos = beregnPosisjonProsent(draggedElement);
-                        const spillerId = draggedElement.dataset.playerId;
+                    function drag(e) {{
+                        if (isDragging) {{
+                            e.preventDefault();
+                            debugLog('Drar spiller');
 
-                        lagreSpillerPosisjon(spillerId, pos);
+                            if (e.type === "touchmove") {{
+                                currentX = e.touches[0].clientX - initialX;
+                                currentY = e.touches[0].clientY - initialY;
+                            }} else {{
+                                currentX = e.clientX - initialX;
+                                currentY = e.clientY - initialY;
+                            }}
 
-                        // Nullstill posisjon og variabler
-                        draggedElement.style.transform = 'translate3d(0, 0, 0)';
-                        initialX = currentX = 0;
-                        initialY = currentY = 0;
-                        draggedElement = null;
-                        active = false;
+                            xOffset = currentX;
+                            yOffset = currentY;
+
+                            player.style.transform =
+                                `translate(${{currentX}}px, ${{currentY}}px)`;
+                        }}
                     }}
-                }}
 
-                // Legg til event listeners
-                document.addEventListener("touchstart", dragStart, false);
-                document.addEventListener("touchend", dragEnd, false);
-                document.addEventListener("touchmove", drag, false);
-                document.addEventListener("mousedown", dragStart, false);
-                document.addEventListener("mouseup", dragEnd, false);
-                document.addEventListener("mousemove", drag, false);
+                    function dragEnd(e) {{
+                        if (isDragging) {{
+                            debugLog('Avslutter drag');
+                            const pos = beregnPosisjonProsent(player);
+                            const spillerId = player.dataset.playerId;
+                            lagreSpillerPosisjon(spillerId, pos);
+
+                            initialX = currentX;
+                            initialY = currentY;
+
+                            isDragging = false;
+                            player.classList.remove('dragging');
+                        }}
+                    }}
+
+                    player.addEventListener('mousedown', dragStart, false);
+                    player.addEventListener('touchstart', dragStart, false);
+                    window.addEventListener('mousemove', drag, false);
+                    window.addEventListener('touchmove', drag, false);
+                    window.addEventListener('mouseup', dragEnd, false);
+                    window.addEventListener('touchend', dragEnd, false);
+                }});
+
+                console.log('Drag-and-drop funksjonalitet lastet');
             </script>
         </body>
     </html>
@@ -1158,6 +1185,21 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
                     # Vis fotballbanen med spillere
                     posisjoner = formations[selected_formation]["posisjoner"]
+
+                    # Hent spillere som er på banen og på benken
+                    paa_banen, paa_benken = hent_alle_spillere_for_periode(
+                        app_handler, periode_id, int(kamp_id)
+                    )
+                    spillere_paa_banen: List[SpillerPosisjon] = []
+                    for spiller in paa_banen:
+                        spiller_posisjon: SpillerPosisjon = {
+                            "id": spiller["id"],
+                            "navn": spiller["navn"],
+                            "posisjon_index": None,
+                            "posisjon": None,
+                        }
+                        spillere_paa_banen.append(spiller_posisjon)
+
                     fotballbane = lag_fotballbane_html(
                         posisjoner=posisjoner,
                         spillere=spillere_paa_banen,
@@ -1248,8 +1290,23 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             st.write(f"Angrep: {formations[selected_formation]['angrep']}")
 
             # Vis fotballbanen med valgt formasjon
+            posisjoner = formations[selected_formation]["posisjoner"]
+
+            # Hent spillere som er på banen
+            paa_banen, _ = hent_alle_spillere_for_periode(app_handler, 0, int(kamp_id))
+            spillere_paa_banen: List[SpillerPosisjon] = []
+            for spiller in paa_banen:
+                spiller_posisjon: SpillerPosisjon = {
+                    "id": spiller["id"],
+                    "navn": spiller["navn"],
+                    "posisjon_index": None,
+                    "posisjon": None,
+                }
+                spillere_paa_banen.append(spiller_posisjon)
+
             fotballbane = lag_fotballbane_html(
-                formations[selected_formation]["posisjoner"],
+                posisjoner=posisjoner,
+                spillere=spillere_paa_banen,
                 kamp_id=int(kamp_id),
                 periode_id=None,
             )
