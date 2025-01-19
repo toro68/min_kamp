@@ -7,7 +7,6 @@ Støtter periodevis oversikt over spillerposisjoner og lagring av formasjoner.
 
 import json
 import logging
-import tempfile
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 import pdfkit
@@ -371,7 +370,7 @@ def lag_fotballbane_html(
                             {{ passive: false }}
                         );
                     }});
-                    
+
                     document.addEventListener('mousemove', handleDrag);
                     document.addEventListener('mouseup', handleDragEnd);
                     document.addEventListener(
@@ -831,385 +830,230 @@ def generer_pdf_html(
     """
 
 
-def lag_pdf(
-    app_handler: AppHandler,
-    kamp_id: int,
-    periode_id: int,
-    fotballbane_html: str,
-    spillere: List[Dict[str, Any]],
-) -> Optional[str]:
-    """Lager PDF med formasjon og spillerliste."""
-    logger.debug("Genererer PDF for kamp %s, periode %s", kamp_id, periode_id)
+def valider_spillerposisjoner(spillerposisjoner: dict) -> Tuple[bool, str]:
+    """Validerer spillerposisjoner før lagring."""
+    if not isinstance(spillerposisjoner, dict):
+        return False, "Ugyldig format på spillerposisjoner"
 
-    # Valider input og sjekk avhengigheter
-    if not HAS_PDFKIT:
-        error_msg = (
-            "PDF-generering er ikke tilgjengelig. "
-            "Installer wkhtmltopdf fra: https://wkhtmltopdf.org/downloads.html\n"
-            "Deretter kjør: pip install pdfkit"
-        )
-        logger.error(error_msg)
-        st.error(error_msg)
-        return None
+    for spiller_id, posisjon in spillerposisjoner.items():
+        if not isinstance(posisjon, dict):
+            return False, f"Ugyldig posisjonsformat for spiller {spiller_id}"
 
-    if not isinstance(kamp_id, int) or kamp_id <= 0:
-        logger.error("Ugyldig kamp_id: %s", kamp_id)
-        return None
+        x = posisjon.get("x")
+        y = posisjon.get("y")
 
-    if not isinstance(periode_id, int) or periode_id < 0:
-        logger.error("Ugyldig periode_id: %s", periode_id)
-        return None
-
-    if not spillere:
-        logger.error("Ingen spillere å inkludere i PDF")
-        return None
-
-    try:
-        # Hent kampinfo
-        with app_handler._database_handler.connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT hjemmelag, bortelag, dato
-                FROM kamper
-                WHERE id = ?
-            """,
-                (kamp_id,),
-            )
-            kamp_data = cursor.fetchone()
-            if not kamp_data:
-                logger.error("Fant ikke kamp med ID %s", kamp_id)
-                return None
-
-            kamp_info = {
-                "hjemmelag": kamp_data[0],
-                "bortelag": kamp_data[1],
-                "dato": kamp_data[2],
-            }
-
-        # Generer HTML
-        html_content = generer_pdf_html(
-            fotballbane_html,
-            spillere,
-            {"id": periode_id, "start": "Start", "slutt": "Slutt"},
-            kamp_info,
-        )
-
-        # Konfigurer PDF-generering
-        options = {"quiet": "", "encoding": "UTF-8", "enable-local-file-access": None}
-
-        # Lag PDF
-        with tempfile.NamedTemporaryFile(
-            suffix=".pdf", delete=False, mode="wb"
-        ) as pdf_file:
-            logger.debug("Genererer PDF til: %s", pdf_file.name)
-            try:
-                pdfkit.from_string(html_content, pdf_file.name, options=options)
-                logger.info("PDF generert for kamp %s, periode %s", kamp_id, periode_id)
-                return pdf_file.name
-            except Exception as pdf_error:
-                logger.error(
-                    "Feil ved PDF-generering: %s\nHTML: %s",
-                    str(pdf_error),
-                    html_content[:500],  # Logg første 500 tegn av HTML
-                )
-                raise
-
-    except Exception as e:
-        logger.error("Feil ved generering av PDF: %s", e)
-        logger.exception("Full feilmelding:")
-        return None
-
-
-def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) -> bool:
-    """Lagrer grunnformasjon for kampen og spillerposisjoner i banekartet."""
-    try:
-        logger.debug("=== Start lagre_grunnformasjon ===")
-        logger.debug("Parametre: kamp_id=%s, formasjon=%s", kamp_id, formasjon)
-
-        # Valider input
-        if not isinstance(kamp_id, int) or kamp_id <= 0:
-            logger.error("Ugyldig kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
-            return False
-
-        if not formasjon or not isinstance(formasjon, str):
-            logger.error("Ugyldig formasjon: %s (type: %s)", formasjon, type(formasjon))
-            return False
-
-        bruker_id_str = st.query_params.get("bruker_id")
-        logger.debug("Hentet bruker_id_str: %s", bruker_id_str)
-
-        if not bruker_id_str:
-            logger.error("Ingen bruker innlogget")
-            return False
+        if x is None or y is None:
+            return False, f"Mangler x/y koordinater for spiller {spiller_id}"
 
         try:
-            bruker_id = int(bruker_id_str)
-            logger.debug("Konvertert bruker_id: %d", bruker_id)
-        except (ValueError, TypeError) as e:
-            logger.error("Ugyldig bruker ID: %s - %s", bruker_id_str, str(e))
-            return False
+            x_float = float(x)
+            y_float = float(y)
+            if not (0 <= x_float <= 100 and 0 <= y_float <= 100):
+                return (
+                    False,
+                    f"Koordinater utenfor gyldig område for spiller {spiller_id}",
+                )
+        except ValueError:
+            return False, f"Ugyldige koordinatverdier for spiller {spiller_id}"
 
+    return True, ""
+
+
+def lagre_banekart(
+    app_handler: AppHandler, kamp_id: int, periode_id: int, spillerposisjoner: dict
+) -> bool:
+    """Lagrer banekart med spillerposisjoner for en gitt kamp og periode."""
+    logger.debug("=== START LAGRE BANEKART ===")
+    logger.debug("Input parametre:")
+    logger.debug("- kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
+    logger.debug("- periode_id: %s (type: %s)", periode_id, type(periode_id))
+    logger.debug("- spillerposisjoner: %s", json.dumps(spillerposisjoner, indent=2))
+
+    # Valider bruker_id
+    bruker_id_str = st.query_params.get("bruker_id")
+    if not bruker_id_str:
+        logger.error("FEIL: Ingen bruker innlogget")
+        st.error("Du må være innlogget for å lagre formasjon")
+        return False
+
+    try:
+        bruker_id = int(bruker_id_str)
+    except ValueError:
+        logger.error("FEIL: Ugyldig bruker_id format: %s", bruker_id_str)
+        st.error("Ugyldig bruker-ID")
+        return False
+
+    # Valider input
+    if not isinstance(kamp_id, int) or kamp_id <= 0:
+        logger.error("FEIL: Ugyldig kamp_id: %s", kamp_id)
+        st.error("Ugyldig kamp-ID")
+        return False
+
+    if not isinstance(periode_id, int) or periode_id < 0:
+        logger.error("FEIL: Ugyldig periode_id: %s", periode_id)
+        st.error("Ugyldig periode-ID")
+        return False
+
+    # Valider spillerposisjoner
+    er_gyldig, feilmelding = valider_spillerposisjoner(spillerposisjoner)
+    if not er_gyldig:
+        logger.error("FEIL: %s", feilmelding)
+        st.error(f"Kunne ikke lagre posisjoner: {feilmelding}")
+        return False
+
+    try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
             logger.debug("Database tilkobling opprettet")
 
+            # Start transaksjon
+            cursor.execute("BEGIN TRANSACTION")
+            logger.debug("Transaksjon startet")
+
             try:
-                # Lagre formasjonstype i app_innstillinger
-                sql = """
-                    INSERT OR REPLACE INTO app_innstillinger
-                    (kamp_id, bruker_id, nokkel, verdi)
-                    VALUES (?, ?, 'grunnformasjon', ?)
-                """
-                logger.debug("SQL for lagring av grunnformasjon: %s", sql)
-                logger.debug(
-                    "Parametere: kamp_id=%s, bruker_id=%s, formasjon=%s",
-                    kamp_id,
-                    bruker_id,
-                    formasjon,
+                # Sjekk om kamp eksisterer og tilhører brukeren
+                cursor.execute(
+                    """SELECT id FROM kamper
+                    WHERE id = ? AND bruker_id = ?""",
+                    (kamp_id, bruker_id),
                 )
-
-                cursor.execute(sql, (kamp_id, bruker_id, formasjon))
-                logger.debug("Grunnformasjon lagret i app_innstillinger")
-
-                # Hent spillere som er på banen
-                logger.debug("Henter spillere på banen...")
-                paa_banen, paa_benken = hent_alle_spillere_for_periode(
-                    app_handler, 0, kamp_id
-                )
-                logger.debug("Fant %d spillere på banen", len(paa_banen))
-                logger.debug("Spillere på banen: %s", paa_banen)
-
-                if not paa_banen:
-                    logger.warning("Ingen spillere funnet på banen")
-                    return True  # Returnerer True siden grunnformasjon ble lagret
-
-                # Hent posisjoner fra valgt formasjon
-                formations = get_available_formations()
-                if formasjon not in formations:
-                    logger.error("Ugyldig formasjon valgt: %s", formasjon)
+                kamp = cursor.fetchone()
+                if not kamp:
+                    error_msg = (
+                        "FEIL: Kamp med ID %s finnes ikke eller "
+                        "tilhører ikke bruker %s"
+                    )
+                    logger.error(error_msg, kamp_id, bruker_id)
+                    conn.rollback()
+                    st.error("Du har ikke tilgang til denne kampen")
                     return False
 
-                posisjoner = formations[formasjon]["posisjoner"]
-                logger.debug(
-                    "Hentet %d posisjoner fra formasjon %s", len(posisjoner), formasjon
+                # Slett eventuelle eksisterende posisjoner
+                logger.debug("Sletter eksisterende posisjoner...")
+                cursor.execute(
+                    """DELETE FROM banekart
+                    WHERE kamp_id = ? AND periode_id = ?""",
+                    (kamp_id, periode_id),
                 )
-                logger.debug("Posisjoner: %s", posisjoner)
+                logger.debug(
+                    "Eksisterende posisjoner slettet. Antall rader påvirket: %d",
+                    cursor.rowcount,
+                )
 
-                # Lag spillerposisjoner dict
-                spillerposisjoner = {}
-                for spiller, pos in zip(paa_banen, posisjoner):
-                    if isinstance(pos, tuple) and len(pos) == 2:
-                        spillerposisjoner[str(spiller["id"])] = {
-                            "x": pos[0],
-                            "y": pos[1],
-                        }
-                logger.debug("Opprettet spillerposisjoner: %s", spillerposisjoner)
+                # Lagre nye posisjoner
+                logger.debug("Lagrer nye posisjoner...")
+                spillerposisjoner_json = json.dumps(spillerposisjoner)
+                logger.debug("JSON som skal lagres: %s", spillerposisjoner_json)
 
-                # Lagre spillerposisjoner i banekart tabellen
-                if spillerposisjoner:
-                    try:
-                        # Slett eksisterende posisjoner
-                        cursor.execute(
-                            "DELETE FROM banekart WHERE kamp_id = ? AND periode_id = 0",
-                            (kamp_id,),
-                        )
-                        logger.debug("Slettet eksisterende posisjoner")
+                cursor.execute(
+                    """INSERT INTO banekart (
+                        kamp_id,
+                        periode_id,
+                        spillerposisjoner,
+                        opprettet_dato,
+                        sist_oppdatert
+                    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                    (kamp_id, periode_id, spillerposisjoner_json),
+                )
+                logger.debug("SQL INSERT utført")
 
-                        # Lagre nye posisjoner
-                        cursor.execute(
-                            """INSERT INTO banekart (
-                                kamp_id,
-                                periode_id,
-                                spillerposisjoner,
-                                opprettet_dato,
-                                sist_oppdatert
-                            ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
-                            (kamp_id, 0, json.dumps(spillerposisjoner)),
-                        )
-                        logger.debug("Nye posisjoner lagret i banekart")
+                # Verifiser at dataene ble lagret
+                cursor.execute(
+                    """SELECT spillerposisjoner
+                    FROM banekart
+                    WHERE kamp_id = ? AND periode_id = ?""",
+                    (kamp_id, periode_id),
+                )
+                lagret_data = cursor.fetchone()
+                if not lagret_data:
+                    logger.error("FEIL: Data ble ikke funnet etter lagring")
+                    conn.rollback()
+                    st.error("Kunne ikke verifisere lagrede data")
+                    return False
 
-                    except Exception as e:
-                        logger.error("Feil ved lagring av banekart: %s", str(e))
-                        logger.error("SQL state: %s", e.__class__.__name__)
-                        conn.rollback()
-                        return False
+                logger.debug("Verifisert lagret data: %s", lagret_data[0])
 
+                # Commit transaksjon
                 conn.commit()
-                logger.debug("=== Fullført lagre_grunnformasjon ===")
+                logger.info(
+                    "Banekart lagret for kamp %s, periode %s", kamp_id, periode_id
+                )
+                logger.debug("=== SLUTT LAGRE BANEKART (SUKSESS) ===")
+                st.success("Posisjoner lagret")
                 return True
 
             except Exception as e:
-                logger.error("Feil ved lagring av data: %s", str(e))
-                logger.error("SQL state: %s", e.__class__.__name__)
                 conn.rollback()
+                logger.error("FEIL ved lagring av banekart: %s", str(e))
+                logger.error("Exception type: %s", type(e).__name__)
+                logger.error("Stack trace:", exc_info=True)
+                logger.debug("=== SLUTT LAGRE BANEKART (FEILET) ===")
+                st.error("Kunne ikke lagre posisjoner")
                 return False
 
     except Exception as e:
-        logger.error("Uventet feil i lagre_grunnformasjon: %s", str(e))
-        logger.exception("Full feilmelding:")
+        logger.error("KRITISK FEIL ved database operasjon: %s", str(e))
+        logger.error("Exception type: %s", type(e).__name__)
+        logger.error("Stack trace:", exc_info=True)
+        logger.debug("=== SLUTT LAGRE BANEKART (FEILET) ===")
+        st.error("En feil oppstod ved lagring")
         return False
 
 
-def hent_grunnformasjon(app_handler: AppHandler, kamp_id: int) -> Optional[str]:
-    """Henter lagret grunnformasjon for kampen."""
-    logger.debug("Henter grunnformasjon for kamp %s", kamp_id)
-
-    # Valider input
-    if not isinstance(kamp_id, int) or kamp_id <= 0:
-        logger.error("Ugyldig kamp_id: %s", kamp_id)
-        return None
-
-    try:
-        with app_handler._database_handler.connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT verdi
-                FROM app_innstillinger
-                WHERE kamp_id = ? AND nokkel = 'grunnformasjon'
-            """,
-                (kamp_id,),
-            )
-            row = cursor.fetchone()
-
-            if row:
-                logger.info("Fant grunnformasjon for kamp %s: %s", kamp_id, row[0])
-            else:
-                logger.info("Ingen grunnformasjon funnet for kamp %s", kamp_id)
-
-            return row[0] if row else None
-
-    except Exception as e:
-        logger.error("Feil ved henting av grunnformasjon: %s", e)
-        logger.exception("Full feilmelding:")
-        return None
-
-
-def _hent_kampinnstillinger(
-    app_handler: AppHandler, kamp_id: int
-) -> Tuple[int, int, int]:
-    """Henter kampinnstillinger fra databasen."""
-    try:
-        bruker_id_str = st.query_params.get("bruker_id")
-        if not bruker_id_str:
-            logger.error("Ingen bruker innlogget")
-            return 70, 7, 7
-
-        try:
-            bruker_id = int(bruker_id_str)
-        except (ValueError, TypeError):
-            logger.error("Ugyldig bruker ID")
-            return 70, 7, 7
-
-        with app_handler._database_handler.connection() as conn:
-            cursor = conn.cursor()
-
-            # Hent innstillinger fra databasen
-            sql = """
-                SELECT nokkel, verdi
-                FROM app_innstillinger
-                WHERE (bruker_id = ? OR kamp_id = ?)
-                AND nokkel IN (
-                    'kamplengde',
-                    'antall_perioder',
-                    'antall_paa_banen'
-                )
-                ORDER BY kamp_id DESC
-            """
-            cursor.execute(sql, (bruker_id, kamp_id))
-
-            # Konverter resultater til dict
-            innstillinger = {}
-            for row in cursor.fetchall():
-                innstillinger[row[0]] = row[1]
-
-            # Hent verdier med standardverdier
-            kamplengde = int(innstillinger.get("kamplengde", 70))
-            antall_perioder = int(innstillinger.get("antall_perioder", 7))
-            antall_paa_banen = int(innstillinger.get("antall_paa_banen", 7))
-
-            # Logg innstillingene
-            logger.info(
-                "Kampinnstillinger for kamp %d: " "lengde=%d, perioder=%d, spillere=%d",
-                kamp_id,
-                kamplengde,
-                antall_perioder,
-                antall_paa_banen,
-            )
-            return kamplengde, antall_perioder, antall_paa_banen
-
-    except Exception as e:
-        logger.error("Feil ved henting av kampinnstillinger: %s", str(e))
-        logger.exception("Full feilmelding:")
-        return 70, 7, 7
-
-
-def hent_bytter_for_periode(
+def hent_banekart(
     app_handler: AppHandler, kamp_id: int, periode_id: int
-) -> List[Dict[str, Any]]:
-    """Henter alle bytter for en periode."""
+) -> Optional[Dict[str, Dict[str, float]]]:
+    """Henter lagret banekart for en gitt kamp og periode.
+
+    Args:
+        app_handler: AppHandler instans
+        kamp_id: ID for kampen
+        periode_id: ID for perioden
+
+    Returns:
+        Optional[Dict[str, Dict[str, float]]]: Spillerposisjoner hvis funnet,
+        ellers None
+    """
+    logger.debug("=== Start hent_banekart ===")
+    logger.debug("Input parametre:")
+    logger.debug("- kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
+    logger.debug("- periode_id: %s (type: %s)", periode_id, type(periode_id))
+
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
+            logger.debug("Database tilkobling opprettet")
 
-            # Først hent alle endringer i perioden
             cursor.execute(
-                """
-                WITH EndringerIPeriode AS (
-                    SELECT
-                        spiller_id,
-                        er_paa,
-                        sist_oppdatert,
-                        LAG(er_paa) OVER (
-                            PARTITION BY spiller_id
-                            ORDER BY sist_oppdatert
-                        ) as forrige_status
-                    FROM bytteplan
-                    WHERE kamp_id = ? AND periode = ?
-                    ORDER BY sist_oppdatert
-                )
-                SELECT
-                    s.navn,
-                    e.er_paa,
-                    e.sist_oppdatert
-                FROM EndringerIPeriode e
-                JOIN spillere s ON e.spiller_id = s.id
-                WHERE (e.er_paa != e.forrige_status OR e.forrige_status IS NULL)
-                ORDER BY e.sist_oppdatert
-            """,
+                """SELECT spillerposisjoner
+                FROM banekart
+                WHERE kamp_id = ? AND periode_id =?""",
                 (kamp_id, periode_id),
             )
+            logger.debug("SQL spørring utført")
 
-            endringer = cursor.fetchall()
-            bytter = []
+            row = cursor.fetchone()
+            if not row:
+                msg = (
+                    f"Ingen banekart funnet for kamp {kamp_id}, "
+                    f"periode {periode_id}"
+                )
+                logger.info(msg)
+                logger.debug("=== Slutt hent_banekart (ingen data) ===")
+                return None
 
-            # Grupper endringer i inn/ut par
-            for i in range(0, len(endringer), 2):
-                ut = None
-                inn = None
-
-                # Finn ut og inn par
-                for j in range(i, min(i + 2, len(endringer))):
-                    if endringer[j][1] == 0:  # er_paa = 0 (ut)
-                        ut = endringer[j][0]  # navn
-                    elif endringer[j][1] == 1:  # er_paa = 1 (inn)
-                        inn = endringer[j][0]  # navn
-
-                if ut and inn:
-                    bytter.append({"ut": ut, "inn": inn, "tidspunkt": endringer[i][2]})
-
-            logger.info(
-                "Fant %d bytter for periode %d i kamp %d",
-                len(bytter),
-                periode_id,
-                kamp_id,
-            )
-            return bytter
+            posisjoner = json.loads(row[0])
+            pos_str = json.dumps(posisjoner, indent=2)
+            logger.debug("Hentet posisjoner: %s", pos_str)
+            logger.debug("=== Slutt hent_banekart (suksess) ===")
+            return posisjoner
 
     except Exception as e:
-        logger.error("Feil ved henting av bytter: %s", e)
-        return []
+        logger.error("Feil ved henting av banekart: %s", str(e))
+        logger.error("Exception type: %s", type(e).__name__)
+        logger.exception("Full feilmelding:")
+        logger.debug("=== Slutt hent_banekart (feilet) ===")
+        return None
 
 
 def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
@@ -1596,8 +1440,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                 logger.debug("Lagre grunnformasjon knapp trykket")
                 try:
                     logger.debug(
-                        "Forsøker å lagre grunnformasjon: %s",
-                        selected_formation
+                        "Forsøker å lagre grunnformasjon: %s", selected_formation
                     )
                     if lagre_grunnformasjon(app_handler, kamp_id, selected_formation):
                         logger.info("Grunnformasjon lagret: %s", selected_formation)
@@ -1662,226 +1505,296 @@ def vis_formation_page(app_handler: AppHandler):
         st.error(f"En feil oppstod ved visning av formasjon: {str(e)}")
 
 
-def lagre_banekart(
-    app_handler: AppHandler, kamp_id: int, periode_id: int, spillerposisjoner: dict
-) -> bool:
-    """Lagrer banekart med spillerposisjoner for en gitt kamp og periode."""
-    logger.debug("=== START LAGRE BANEKART ===")
-    logger.debug("Input parametre:")
-    logger.debug("- kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
-    logger.debug("- periode_id: %s (type: %s)", periode_id, type(periode_id))
-    logger.debug("- spillerposisjoner: %s", json.dumps(spillerposisjoner, indent=2))
-
+def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) -> bool:
+    """Lagrer grunnformasjon for kampen og spillerposisjoner i banekartet."""
     try:
+        logger.debug("=== Start lagre_grunnformasjon ===")
+        logger.debug("Parametre: kamp_id=%s, formasjon=%s", kamp_id, formasjon)
+
+        # Valider input
+        if not isinstance(kamp_id, int) or kamp_id <= 0:
+            logger.error(
+                "Ugyldig kamp_id: %s (type: %s)",
+                kamp_id,
+                type(kamp_id)
+            )
+            return False
+
+        if not formasjon or not isinstance(formasjon, str):
+            logger.error("Ugyldig formasjon: %s (type: %s)", formasjon, type(formasjon))
+            return False
+
+        bruker_id_str = st.query_params.get("bruker_id")
+        logger.debug("Hentet bruker_id_str: %s", bruker_id_str)
+
+        if not bruker_id_str:
+            logger.error("Ingen bruker innlogget")
+            return False
+
+        try:
+            bruker_id = int(bruker_id_str)
+            logger.debug("Konvertert bruker_id: %d", bruker_id)
+        except (ValueError, TypeError) as e:
+            logger.error("Ugyldig bruker ID: %s - %s", bruker_id_str, str(e))
+            return False
+
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
             logger.debug("Database tilkobling opprettet")
 
-            # Start transaksjon
-            cursor.execute("BEGIN TRANSACTION")
-            logger.debug("Transaksjon startet")
-
             try:
-                # Sjekk om kamp eksisterer
-                cursor.execute("SELECT id FROM kamper WHERE id = ?", (kamp_id,))
-                kamp = cursor.fetchone()
-                if not kamp:
-                    logger.error("FEIL: Kamp med ID %s finnes ikke", kamp_id)
-                    conn.rollback()
-                    return False
-                logger.debug("Kamp funnet: %s", kamp)
-
-                # Valider spillerposisjoner
-                if not isinstance(spillerposisjoner, dict):
-                    logger.error(
-                        "FEIL: Ugyldig spillerposisjoner format: %s (type: %s)",
-                        spillerposisjoner,
-                        type(spillerposisjoner),
-                    )
-                    conn.rollback()
-                    return False
-
-                # Sjekk at alle spillere har gyldige posisjoner
-                logger.debug("Validerer spillerposisjoner...")
-                for spiller_id, posisjon in spillerposisjoner.items():
-                    logger.debug(
-                        "Validerer spiller %s: %s",
-                        spiller_id,
-                        json.dumps(posisjon, indent=2),
-                    )
-
-                    if not isinstance(posisjon, dict):
-                        logger.error(
-                            "FEIL: Ugyldig posisjonsformat for spiller %s: %s",
-                            spiller_id,
-                            posisjon,
-                        )
-                        conn.rollback()
-                        return False
-
-                    x = posisjon.get("x")
-                    y = posisjon.get("y")
-
-                    if x is None or y is None:
-                        logger.error(
-                            "FEIL: Mangler x/y koordinater for spiller %s: %s",
-                            spiller_id,
-                            posisjon,
-                        )
-                        conn.rollback()
-                        return False
-
-                    try:
-                        x_float = float(x)
-                        y_float = float(y)
-                        logger.debug(
-                            "Koordinater for spiller %s: x=%f, y=%f",
-                            spiller_id,
-                            x_float,
-                            y_float,
-                        )
-
-                        if not (0 <= x_float <= 100 and 0 <= y_float <= 100):
-                            logger.error(
-                                "FEIL: Koordinater utenfor gyldig område (0-100) "
-                                "for spiller %s: x=%f, y=%f",
-                                spiller_id,
-                                x_float,
-                                y_float,
-                            )
-                            conn.rollback()
-                            return False
-                    except ValueError as e:
-                        logger.error(
-                            "FEIL: Kunne ikke konvertere koordinater til float "
-                            "for spiller %s: %s",
-                            spiller_id,
-                            str(e),
-                        )
-                        conn.rollback()
-                        return False
-
-                logger.debug("Alle spillerposisjoner validert OK")
-
-                # Slett eventuelle eksisterende posisjoner
-                logger.debug("Sletter eksisterende posisjoner...")
-                cursor.execute(
-                    """DELETE FROM banekart
-                    WHERE kamp_id = ? AND periode_id =?""",
-                    (kamp_id, periode_id),
-                )
+                # Lagre formasjonstype i app_innstillinger
+                sql = """
+                    INSERT OR REPLACE INTO app_innstillinger
+                    (kamp_id, bruker_id, nokkel, verdi)
+                    VALUES (?, ?, 'grunnformasjon', ?)
+                """
+                logger.debug("SQL for lagring av grunnformasjon: %s", sql)
                 logger.debug(
-                    "Eksisterende posisjoner slettet. " "Antall rader påvirket: %d",
-                    cursor.rowcount,
+                    "Parametere: kamp_id=%s, bruker_id=%s, formasjon=%s",
+                    kamp_id,
+                    bruker_id,
+                    formasjon,
                 )
 
-                # Lagre nye posisjoner
-                logger.debug("Lagrer nye posisjoner...")
-                spillerposisjoner_json = json.dumps(spillerposisjoner)
-                logger.debug("JSON som skal lagres: %s", spillerposisjoner_json)
+                cursor.execute(sql, (kamp_id, bruker_id, formasjon))
+                logger.debug("Grunnformasjon lagret i app_innstillinger")
 
-                cursor.execute(
-                    """INSERT INTO banekart (
-                        kamp_id,
-                        periode_id,
-                        spillerposisjoner,
-                        opprettet_dato,
-                        sist_oppdatert
-                    ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
-                    (kamp_id, periode_id, spillerposisjoner_json),
+                # Hent spillere som er på banen
+                logger.debug("Henter spillere på banen...")
+                paa_banen, paa_benken = hent_alle_spillere_for_periode(
+                    app_handler, 0, kamp_id
                 )
-                logger.debug("SQL INSERT utført")
+                logger.debug("Fant %d spillere på banen", len(paa_banen))
+                logger.debug("Spillere på banen: %s", paa_banen)
 
-                # Verifiser at dataene ble lagret
-                cursor.execute(
-                    """SELECT spillerposisjoner
-                    FROM banekart
-                    WHERE kamp_id = ? AND periode_id =?""",
-                    (kamp_id, periode_id),
-                )
-                lagret_data = cursor.fetchone()
-                if not lagret_data:
-                    logger.error("FEIL: Data ble ikke funnet etter lagring")
-                    conn.rollback()
+                if not paa_banen:
+                    logger.warning("Ingen spillere funnet på banen")
+                    return True  # Returnerer True siden grunnformasjon ble lagret
+
+                # Hent posisjoner fra valgt formasjon
+                formations = get_available_formations()
+                if formasjon not in formations:
+                    logger.error("Ugyldig formasjon valgt: %s", formasjon)
                     return False
 
-                logger.debug("Verifisert lagret data: %s", lagret_data[0])
-
-                # Commit transaksjon
-                conn.commit()
-                logger.info(
-                    "Banekart lagret for kamp %s, periode %s", kamp_id, periode_id
+                posisjoner = formations[formasjon]["posisjoner"]
+                logger.debug(
+                    "Hentet %d posisjoner fra formasjon %s", len(posisjoner), formasjon
                 )
-                logger.debug("=== SLUTT LAGRE BANEKART (SUKSESS) ===")
+                logger.debug("Posisjoner: %s", posisjoner)
+
+                # Lag spillerposisjoner dict
+                spillerposisjoner = {}
+                for spiller, pos in zip(paa_banen, posisjoner):
+                    if isinstance(pos, tuple) and len(pos) == 2:
+                        spillerposisjoner[str(spiller["id"])] = {
+                            "x": pos[0],
+                            "y": pos[1],
+                        }
+                logger.debug("Opprettet spillerposisjoner: %s", spillerposisjoner)
+
+                # Lagre spillerposisjoner i banekart tabellen
+                if spillerposisjoner:
+                    try:
+                        # Slett eksisterende posisjoner
+                        cursor.execute(
+                            "DELETE FROM banekart WHERE kamp_id = ? AND periode_id = 0",
+                            (kamp_id,),
+                        )
+                        logger.debug("Slettet eksisterende posisjoner")
+
+                        # Lagre nye posisjoner
+                        cursor.execute(
+                            """INSERT INTO banekart (
+                                kamp_id,
+                                periode_id,
+                                spillerposisjoner,
+                                opprettet_dato,
+                                sist_oppdatert
+                            ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                            (kamp_id, 0, json.dumps(spillerposisjoner)),
+                        )
+                        logger.debug("Nye posisjoner lagret i banekart")
+
+                    except Exception as e:
+                        logger.error("Feil ved lagring av banekart: %s", str(e))
+                        logger.error("SQL state: %s", e.__class__.__name__)
+                        conn.rollback()
+                        return False
+
+                conn.commit()
+                logger.debug("=== Fullført lagre_grunnformasjon ===")
                 return True
 
             except Exception as e:
+                logger.error("Feil ved lagring av data: %s", str(e))
+                logger.error("SQL state: %s", e.__class__.__name__)
                 conn.rollback()
-                logger.error("FEIL ved lagring av banekart: %s", str(e))
-                logger.error("Exception type: %s", type(e).__name__)
-                logger.error("Stack trace:", exc_info=True)
-                logger.debug("=== SLUTT LAGRE BANEKART (FEILET) ===")
                 return False
 
     except Exception as e:
-        logger.error("KRITISK FEIL ved database operasjon: %s", str(e))
-        logger.error("Exception type: %s", type(e).__name__)
-        logger.error("Stack trace:", exc_info=True)
-        logger.debug("=== SLUTT LAGRE BANEKART (FEILET) ===")
+        logger.error("Uventet feil i lagre_grunnformasjon: %s", str(e))
+        logger.exception("Full feilmelding:")
         return False
 
 
-def hent_banekart(
-    app_handler: AppHandler, kamp_id: int, periode_id: int
-) -> Optional[Dict[str, Dict[str, float]]]:
-    """Henter lagret banekart for en gitt kamp og periode.
+def hent_grunnformasjon(app_handler: AppHandler, kamp_id: int) -> Optional[str]:
+    """Henter lagret grunnformasjon for kampen."""
+    logger.debug("Henter grunnformasjon for kamp %s", kamp_id)
 
-    Args:
-        app_handler: AppHandler instans
-        kamp_id: ID for kampen
-        periode_id: ID for perioden
-
-    Returns:
-        Optional[Dict[str, Dict[str, float]]]: Spillerposisjoner hvis funnet,
-        ellers None
-    """
-    logger.debug("=== Start hent_banekart ===")
-    logger.debug("Input parametre:")
-    logger.debug("- kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
-    logger.debug("- periode_id: %s (type: %s)", periode_id, type(periode_id))
+    # Valider input
+    if not isinstance(kamp_id, int) or kamp_id <= 0:
+        logger.error("Ugyldig kamp_id: %s", kamp_id)
+        return None
 
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
-            logger.debug("Database tilkobling opprettet")
-
             cursor.execute(
-                """SELECT spillerposisjoner
-                FROM banekart
-                WHERE kamp_id = ? AND periode_id =?""",
-                (kamp_id, periode_id),
+                """
+                SELECT verdi
+                FROM app_innstillinger
+                WHERE kamp_id = ? AND nokkel = 'grunnformasjon'
+            """,
+                (kamp_id,),
             )
-            logger.debug("SQL spørring utført")
-
             row = cursor.fetchone()
-            if not row:
-                msg = (
-                    f"Ingen banekart funnet for kamp {kamp_id}, "
-                    f"periode {periode_id}"
-                )
-                logger.info(msg)
-                logger.debug("=== Slutt hent_banekart (ingen data) ===")
-                return None
 
-            posisjoner = json.loads(row[0])
-            pos_str = json.dumps(posisjoner, indent=2)
-            logger.debug("Hentet posisjoner: %s", pos_str)
-            logger.debug("=== Slutt hent_banekart (suksess) ===")
-            return posisjoner
+            if row:
+                logger.info("Fant grunnformasjon for kamp %s: %s", kamp_id, row[0])
+            else:
+                logger.info("Ingen grunnformasjon funnet for kamp %s", kamp_id)
+
+            return row[0] if row else None
 
     except Exception as e:
-        logger.error("Feil ved henting av banekart: %s", str(e))
-        logger.error("Exception type: %s", type(e).__name__)
+        logger.error("Feil ved henting av grunnformasjon: %s", e)
         logger.exception("Full feilmelding:")
-        logger.debug("=== Slutt hent_banekart (feilet) ===")
         return None
+
+
+def _hent_kampinnstillinger(
+    app_handler: AppHandler, kamp_id: int
+) -> Tuple[int, int, int]:
+    """Henter kampinnstillinger fra databasen."""
+    try:
+        bruker_id_str = st.query_params.get("bruker_id")
+        if not bruker_id_str:
+            logger.error("Ingen bruker innlogget")
+            return 70, 7, 7
+
+        try:
+            bruker_id = int(bruker_id_str)
+        except (ValueError, TypeError):
+            logger.error("Ugyldig bruker ID")
+            return 70, 7, 7
+
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+
+            # Hent innstillinger fra databasen
+            sql = """
+                SELECT nokkel, verdi
+                FROM app_innstillinger
+                WHERE (bruker_id = ? OR kamp_id = ?)
+                AND nokkel IN (
+                    'kamplengde',
+                    'antall_perioder',
+                    'antall_paa_banen'
+                )
+                ORDER BY kamp_id DESC
+            """
+            cursor.execute(sql, (bruker_id, kamp_id))
+
+            # Konverter resultater til dict
+            innstillinger = {}
+            for row in cursor.fetchall():
+                innstillinger[row[0]] = row[1]
+
+            # Hent verdier med standardverdier
+            kamplengde = int(innstillinger.get("kamplengde", 70))
+            antall_perioder = int(innstillinger.get("antall_perioder", 7))
+            antall_paa_banen = int(innstillinger.get("antall_paa_banen", 7))
+
+            # Logg innstillingene
+            logger.info(
+                "Kampinnstillinger for kamp %d: " "lengde=%d, perioder=%d, spillere=%d",
+                kamp_id,
+                kamplengde,
+                antall_perioder,
+                antall_paa_banen,
+            )
+            return kamplengde, antall_perioder, antall_paa_banen
+
+    except Exception as e:
+        logger.error("Feil ved henting av kampinnstillinger: %s", str(e))
+        logger.exception("Full feilmelding:")
+        return 70, 7, 7
+
+
+def hent_bytter_for_periode(
+    app_handler: AppHandler, kamp_id: int, periode_id: int
+) -> List[Dict[str, Any]]:
+    """Henter alle bytter for en periode."""
+    try:
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+
+            # Først hent alle endringer i perioden
+            cursor.execute(
+                """
+                WITH EndringerIPeriode AS (
+                    SELECT
+                        spiller_id,
+                        er_paa,
+                        sist_oppdatert,
+                        LAG(er_paa) OVER (
+                            PARTITION BY spiller_id
+                            ORDER BY sist_oppdatert
+                        ) as forrige_status
+                    FROM bytteplan
+                    WHERE kamp_id = ? AND periode = ?
+                    ORDER BY sist_oppdatert
+                )
+                SELECT
+                    s.navn,
+                    e.er_paa,
+                    e.sist_oppdatert
+                FROM EndringerIPeriode e
+                JOIN spillere s ON e.spiller_id = s.id
+                WHERE (e.er_paa != e.forrige_status OR e.forrige_status IS NULL)
+                ORDER BY e.sist_oppdatert
+            """,
+                (kamp_id, periode_id),
+            )
+
+            endringer = cursor.fetchall()
+            bytter = []
+
+            # Grupper endringer i inn/ut par
+            for i in range(0, len(endringer), 2):
+                ut = None
+                inn = None
+
+                # Finn ut og inn par
+                for j in range(i, min(i + 2, len(endringer))):
+                    if endringer[j][1] == 0:  # er_paa = 0 (ut)
+                        ut = endringer[j][0]  # navn
+                    elif endringer[j][1] == 1:  # er_paa = 1 (inn)
+                        inn = endringer[j][0]  # navn
+
+                if ut and inn:
+                    bytter.append({"ut": ut, "inn": inn, "tidspunkt": endringer[i][2]})
+
+            logger.info(
+                "Fant %d bytter for periode %d i kamp %d",
+                len(bytter),
+                periode_id,
+                kamp_id,
+            )
+            return bytter
+
+    except Exception as e:
+        logger.error("Feil ved henting av bytter: %s", e)
+        return []
