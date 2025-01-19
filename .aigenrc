@@ -93,6 +93,13 @@ database_rules:
       - kjort_dato (TIMESTAMP)
       - opprettet_dato (DATETIME)
       - sist_oppdatert (DATETIME)
+    - banekart:
+      - kamp_id (FK -> kamper.id)
+      - periode_id (INTEGER NOT NULL)
+      - spillerposisjoner (TEXT NOT NULL)
+      - opprettet_dato (DATETIME DEFAULT CURRENT_TIMESTAMP)
+      - sist_oppdatert (DATETIME DEFAULT CURRENT_TIMESTAMP)
+      - PRIMARY KEY (kamp_id, periode_id)
     - brukere:
       - id (PK, AUTOINCREMENT)
       - brukernavn (TEXT NOT NULL UNIQUE)
@@ -151,6 +158,9 @@ database_rules:
   - indekser:
     - migrations:
       - idx_migrations_navn: migrations(navn)
+    - banekart:
+      - idx_banekart_kamp_id: banekart(kamp_id)
+      - idx_banekart_periode_id: banekart(periode_id)
     - brukere:
       - idx_brukere_brukernavn: brukere(brukernavn)
     - app_innstillinger:
@@ -172,7 +182,6 @@ database_rules:
     - bytteplan:
       - idx_bytteplan_kamp_id: bytteplan(kamp_id)
       - idx_bytteplan_spiller_id: bytteplan(spiller_id)
-      - idx_bytteplan_periode: bytteplan(periode)
     - spilletid:
       - idx_spilletid_kamp_id: spilletid(kamp_id)
       - idx_spilletid_spiller_id: spilletid(spiller_id)
@@ -195,6 +204,8 @@ database_rules:
       - UNIQUE(kamp_id, spiller_id)
       - FOREIGN KEY (kamp_id) REFERENCES kamper(id) ON DELETE CASCADE
       - FOREIGN KEY (spiller_id) REFERENCES spillere(id) ON DELETE CASCADE
+    - banekart:
+      - FOREIGN KEY (kamp_id) REFERENCES kamper(id) ON DELETE CASCADE
 
 # Logging-regler
 logging_rules:
@@ -217,6 +228,29 @@ debugging_rules:
     - Bruk beskrivende meldinger på norsk
     - Inkluder relevant kontekst i meldinger
 
+  # Meldingstolkning
+  meldingstolkning:
+    - prefiks:
+      - "[DEBUG]": For debugging-meldinger
+      - "[INFO]": For informasjonsmeldinger
+      - "[WARN]": For advarsler
+      - "[ERROR]": For feilmeldinger
+      - "[FEIL]": For brukersynlige feilmeldinger
+
+    - format:
+      - funksjonskall: "Starter/Avslutter {funksjonsnavn} med {parametre}"
+      - variabler: "Variabel {navn} har verdi {verdi}"
+      - sql: "Utfører SQL: {spørring} med parametre {params}"
+      - brukerhandling: "Bruker {id} utførte {handling}"
+      - feil: "Feil i {kontekst}: {feilmelding}"
+
+    - kontekst:
+      - tid: Alltid inkluder tidspunkt
+      - bruker: Inkluder bruker-ID hvis tilgjengelig
+      - handling: Beskriv hva som skjer
+      - data: Vis relevante dataverdier
+      - resultat: Vis resultatet av operasjonen
+
   # Logging-nivåer for debugging
   logging_nivåer:
     - DEBUG: For detaljert debugging-informasjon
@@ -237,43 +271,24 @@ debugging_rules:
     - Funksjonskall: Logg inn- og ut-parametere
     - SQL-spørringer: Logg spørringer og resultater
     - Brukerhandlinger: Logg relevante brukerhandlinger
-    - Feilmeldinger: Logg full stack trace
 
-  # Best practices
-  beste_praksis:
-    - Start med enkel logging før avansert debugging
-    - Isoler problemområdet før detaljert debugging
-    - Verifiser antagelser med logging
-    - Dokumenter debugging-funn
-    - Lag tester for avdekkede feil
-    - Oppdater dokumentasjon basert på funn
+  # Prompt-eksempler
+  prompts:
+    - funksjonskall:
+        format: "Starter {funksjon} - bruker: {bruker_id}, parametre: {params}"
+        eksempel: "Starter lagre_formasjon - bruker: 123, parametre: kamp_id=45, periode=1"
 
-  # Forbudte praksiser
-  forbudt:
-    - Hardkoding av debugging-verdier
-    - Commenting ut kode for debugging
-    - Bruk av print-statements
-    - Debugging direkte i produksjon
-    - Eksponering av sensitive data i logger
-    - Permanent debugging-kode
+    - brukerhandling:
+        format: "Bruker {id} {handling} på {objekt}"
+        eksempel: "Bruker 123 dro spiller 45 til posisjon (x:100, y:200)"
 
-  # Debugging-workflow
-  workflow:
-    1. Identifiser problemet
-    2. Legg til relevant logging
-    3. Reproduser feilen
-    4. Analyser logger
-    5. Test løsning
-    6. Fjern debugging-kode
-    7. Dokumenter løsningen
+    - feilmelding:
+        format: "FEIL i {kontekst}: {melding} ({detaljer})"
+        eksempel: "FEIL i lagre_formasjon: Ugyldig kamp_id (id=0)"
 
-  # Sikkerhet
-  sikkerhet:
-    - Ikke logg sensitive data
-    - Ikke aktiver debugging i produksjon
-    - Fjern all debugging-informasjon før deploy
-    - Beskytt debug-endepunkter
-    - Krypter debug-logger
+    - suksess:
+        format: "OK: {handling} fullført - {detaljer}"
+        eksempel: "OK: Formasjon lagret - kamp_id=45, periode=1"
 
 # Funksjonalitet for formation_page.py
 
