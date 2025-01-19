@@ -1,6 +1,23 @@
--- Legg til tidsstempel-kolonner i banekart-tabellen
-ALTER TABLE banekart ADD COLUMN opprettet_dato DATETIME DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE banekart ADD COLUMN sist_oppdatert DATETIME DEFAULT CURRENT_TIMESTAMP;
+-- Legg til tidsstempel-kolonner i banekart-tabellen hvis de ikke finnes
+CREATE TABLE IF NOT EXISTS temp_table AS SELECT * FROM banekart;
+DROP TABLE banekart;
+
+CREATE TABLE banekart (
+    kamp_id INTEGER,
+    periode_id INTEGER,
+    spillerposisjoner TEXT,
+    opprettet_dato DATETIME DEFAULT CURRENT_TIMESTAMP,
+    sist_oppdatert DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (kamp_id, periode_id)
+);
+
+INSERT INTO banekart (kamp_id, periode_id, spillerposisjoner)
+SELECT kamp_id, periode_id, spillerposisjoner FROM temp_table;
+
+DROP TABLE temp_table;
+
+-- Opprett indeks
+CREATE INDEX IF NOT EXISTS idx_banekart_kamp_periode ON banekart(kamp_id, periode_id);
 
 -- Oppdater trigger for å håndtere sist_oppdatert
 DROP TRIGGER IF EXISTS update_banekart_timestamp;
