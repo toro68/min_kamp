@@ -198,8 +198,160 @@ def lag_fotballbane_html(
     sixteen_meter_height = 150
     sixteen_meter_width = 400
 
+    # Definer JavaScript-kode først
+    js_kode = r"""
+        let draggedElement = null;
+        let initialX = 0;
+        let initialY = 0;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        function savePlayerPosition(elementId, x, y) {
+            try {
+                // Sjekk at vi har et gyldig element-id
+                if (!elementId) {
+                    console.error('Mangler element-id');
+                    return;
+                }
+
+                // Hent fotballbanen
+                const bane = document.querySelector('.fotballbane');
+                if (!bane) {
+                    console.error('Fant ikke fotballbane-elementet');
+                    return;
+                }
+
+                // Hent periode-id
+                const periodeId = bane.getAttribute('data-periode-id');
+                if (!periodeId) {
+                    console.error('Fant ikke periode-id på banen');
+                    return;
+                }
+
+                // Beregn prosent-posisjoner relativt til banen
+                const baneRect = bane.getBoundingClientRect();
+                const xProsent = (x / baneRect.width) * 100;
+                const yProsent = (y / baneRect.height) * 100;
+
+                // Oppdater spillerens posisjon visuelt
+                const spiller = document.getElementById('spiller_' + elementId);
+                if (spiller) {
+                    spiller.style.left = `${x}px`;
+                    spiller.style.top = `${y}px`;
+                }
+
+                console.log('Lagrer posisjon:', {
+                    element: elementId,
+                    periode: periodeId,
+                    xProsent: xProsent.toFixed(2),
+                    yProsent: yProsent.toFixed(2)
+                });
+
+                // Lag data-objekt for banekart
+                const data = {
+                    type: 'banekart',
+                    posisjoner: {
+                        [elementId]: {
+                            x: parseFloat(xProsent.toFixed(2)),
+                            y: parseFloat(yProsent.toFixed(2))
+                        }
+                    }
+                };
+
+                // Send data til Streamlit via events
+                const event = new CustomEvent('streamlit:message', {
+                    bubbles: true,
+                    detail: {
+                        type: 'streamlit:set_query_param',
+                        queryParams: {
+                            [`banekart_${periodeId}`]: JSON.stringify(data)
+                        }
+                    }
+                });
+                window.dispatchEvent(event);
+
+            } catch (error) {
+                console.error('Feil ved lagring av posisjon:', error);
+                console.error('Detaljer:', {
+                    elementId,
+                    x,
+                    y,
+                    periodeId: document.querySelector('.fotballbane')?
+                        .getAttribute('data-periode-id')
+                });
+            }
+        }
+
+        function handleDragStart(e) {
+            draggedElement = this;
+            draggedElement.classList.add('dragging');
+
+            // Beregn offset fra musepeker til element
+            const rect = draggedElement.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            console.log('Drag start:', {
+                element: draggedElement.id,
+                offsetX,
+                offsetY
+            });
+        }
+
+        function handleDrag(e) {
+            if (!draggedElement) return;
+
+            e.preventDefault();
+
+            // Beregn ny posisjon basert på musepeker minus offset
+            const x = e.clientX - offsetX;
+            const y = e.clientY - offsetY;
+
+            // Oppdater elementets posisjon
+            draggedElement.style.left = `${x}px`;
+            draggedElement.style.top = `${y}px`;
+
+            console.log('Drag move:', {
+                element: draggedElement.id,
+                x,
+                y
+            });
+        }
+
+        function handleDragEnd(e) {
+            if (!draggedElement) return;
+
+            draggedElement.classList.remove('dragging');
+
+            // Beregn endelig posisjon relativt til banen
+            const bane = document.querySelector('.fotballbane');
+            const baneRect = bane.getBoundingClientRect();
+            const elementRect = draggedElement.getBoundingClientRect();
+
+            const relativeX = elementRect.left - baneRect.left;
+            const relativeY = elementRect.top - baneRect.top;
+
+            // Hent spiller-id fra element-id
+            const spillerId = draggedElement.id.replace('spiller_', '');
+
+            // Lagre posisjonen
+            savePlayerPosition(spillerId, relativeX, relativeY);
+
+            draggedElement = null;
+        }
+
+        // Legg til event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.player').forEach(player => {
+                player.addEventListener('mousedown', handleDragStart);
+                document.addEventListener('mousemove', handleDrag);
+                document.addEventListener('mouseup', handleDragEnd);
+            });
+        });
+    """
+
     # Generer HTML for spillerposisjonene
-    fotballbane = ""
+    spillere_html = ""
     if spillere and posisjoner:
         for spiller, pos in zip(spillere, posisjoner):
             if not isinstance(pos, tuple) or len(pos) != 2:
@@ -207,13 +359,27 @@ def lag_fotballbane_html(
                 continue
 
             x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height)
-            fotballbane += f"""
-            <div class="player" draggable="true" data-player-id="{spiller['id']}"
-                 style="position: absolute; left: {x-spiller_radius}px; top: {y-spiller_radius}px;
-                        width: {spiller_radius*2}px; height: {spiller_radius*2}px;
-                        background-color: white; border-radius: 50%;
-                        display: flex; align-items: center; justify-content: center;
-                        font-size: 12px; color: black;">
+            spillere_html += f"""
+            <div class="player" draggable="true"
+                 id="spiller_{spiller['id']}"
+                 data-player-id="{spiller['id']}"
+                 style="position: absolute;
+                        left: {x-spiller_radius}px;
+                        top: {y-spiller_radius}px;
+                        width: {spiller_radius*2}px;
+                        height: {spiller_radius*2}px;
+                        background-color: white;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 12px;
+                        color: black;
+                        cursor: move;
+                        user-select: none;
+                        -webkit-user-select: none;
+                        touch-action: none;
+                        z-index: 1000;">
                 {spiller['navn']}
             </div>
             """
@@ -222,63 +388,75 @@ def lag_fotballbane_html(
     if spillere_paa_benken:
         for i, spiller in enumerate(spillere_paa_benken):
             y = margin + i * bench_spacing
-            fotballbane += f"""
-            <div class="player" draggable="true" data-player-id="{spiller['id']}"
-                 style="position: absolute; left: {bench_start_x}px; top: {y}px;
-                        width: {spiller_radius*2}px; height: {spiller_radius*2}px;
-                        background-color: #ddd; border-radius: 50%;
-                        display: flex; align-items: center; justify-content: center;
-                        font-size: 12px; color: black;">
+            spillere_html += f"""
+            <div class="player" draggable="true"
+                 id="spiller_{spiller['id']}"
+                 data-player-id="{spiller['id']}"
+                 style="position: absolute;
+                        left: {bench_start_x}px;
+                        top: {y}px;
+                        width: {spiller_radius*2}px;
+                        height: {spiller_radius*2}px;
+                        background-color: #ddd;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 12px;
+                        color: black;
+                        cursor: move;
+                        user-select: none;
+                        -webkit-user-select: none;
+                        touch-action: none;
+                        z-index: 1000;">
                 {spiller['navn']}
             </div>
             """
 
+    # Bygg komplett HTML
     html = f"""
-    <!DOCTYPE html>
-    <html>
+        <!DOCTYPE html>
+        <html>
         <head>
-            <meta charset="utf-8">
             <style>
-                .lagre-knapp {{
-                    position: fixed;
-                    top: 10px;
-                    right: 10px;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                }}
-                .lagre-knapp:hover {{
-                    background-color: #45a049;
+                .fotballbane {{
+                    position: relative;
+                    overflow: visible !important;
+                    touch-action: none;
+                    user-select: none;
+                    -webkit-user-select: none;
                 }}
                 .player {{
                     position: absolute;
-                    cursor: move;
-                    border: 1px solid black;
-                    z-index: 100;
-                    background-color: white;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 12px;
-                    color: black;
+                    cursor: grab;
                     user-select: none;
                     -webkit-user-select: none;
-                    -moz-user-select: none;
                     touch-action: none;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }}
+                .player:hover {{
+                    transform: scale(1.1);
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                    cursor: grab;
+                }}
+                .player:active {{
+                    cursor: grabbing;
                 }}
                 .dragging {{
                     opacity: 0.8;
+                    transform: scale(1.1);
+                    box-shadow: 0 8px 16px rgba(0,0,0,0.4);
                     pointer-events: none;
                 }}
             </style>
         </head>
         <body>
-            <div style="width: {width+100}px; height: {height}px; position: relative; overflow: visible;">
-                <svg width="{width}" height="{height}" style="background-color: #2e8b57;">
+            <div style="width: {width+100}px; height: {height}px;
+                        position: relative; overflow: visible;"
+                 class="fotballbane"
+                 data-periode-id="{periode_id}">
+                <svg width="{width}" height="{height}"
+                     style="background-color: #2e8b57;">
                     <!-- Ytre ramme -->
                     <rect x="{margin}" y="{margin}"
                           width="{width-2*margin}" height="{height-2*margin}"
@@ -295,137 +473,31 @@ def lag_fotballbane_html(
 
                     <!-- Øvre 16-meter -->
                     <rect x="{(width-sixteen_meter_width)/2}" y="{margin}"
-                          width="{sixteen_meter_width}" height="{sixteen_meter_height}"
+                          width="{sixteen_meter_width}"
+                          height="{sixteen_meter_height}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Nedre 16-meter -->
-                    <rect x="{(width-sixteen_meter_width)/2}" y="{height-margin-sixteen_meter_height}"
-                          width="{sixteen_meter_width}" height="{sixteen_meter_height}"
+                    <rect x="{(width-sixteen_meter_width)/2}"
+                          y="{height-margin-sixteen_meter_height}"
+                          width="{sixteen_meter_width}"
+                          height="{sixteen_meter_height}"
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
 
                 <!-- Spillere -->
-                {fotballbane}
+                {spillere_html}
             </div>
-            <button class="lagre-knapp" onclick="lagrePosisjoner()">Lagre posisjoner</button>
+            <button class="lagre-knapp" onclick="lagrePosisjoner()">
+                Lagre posisjoner
+            </button>
             <script>
-                console.log('Laster drag-and-drop funksjonalitet...');
-
-                const kampId = {kamp_id or 'null'};
-                const periodeId = {periode_id or 'null'};
-                const spillerPosisjoner = {{}};
-
-                function debugLog(melding) {{
-                    console.log(`[DEBUG] ${{melding}}`);
-                }}
-
-                function beregnPosisjonProsent(element) {{
-                    debugLog('Beregner posisjon i prosent');
-                    const rect = element.getBoundingClientRect();
-                    const bane = document.querySelector('svg');
-                    const baneRect = bane.getBoundingClientRect();
-
-                    const x = ((rect.left + rect.width/2) - baneRect.left) / baneRect.width * 100;
-                    const y = ((rect.top + rect.height/2) - baneRect.top) / baneRect.height * 100;
-
-                    debugLog(`Posisjon: x=${{x}}, y=${{y}}`);
-                    return {{ x, y }};
-                }}
-
-                function lagreSpillerPosisjon(spillerId, posisjon) {{
-                    debugLog(`Lagrer posisjon for spiller ${{spillerId}}: ${{JSON.stringify(posisjon)}}`);
-                    spillerPosisjoner[spillerId] = posisjon;
-                }}
-
-                function lagrePosisjoner() {{
-                    debugLog('Lagrer alle posisjoner');
-                    const data = {{
-                        type: 'lagre_posisjon',
-                        kamp_id: kampId,
-                        periode_id: periodeId,
-                        posisjoner: spillerPosisjoner
-                    }};
-
-                    const params = new URLSearchParams(window.location.search);
-                    params.set(`banekart_${{periodeId}}`, JSON.stringify(data));
-                    window.location.search = params.toString();
-                }}
-
-                document.querySelectorAll('.player').forEach(player => {{
-                    let isDragging = false;
-                    let currentX;
-                    let currentY;
-                    let initialX;
-                    let initialY;
-                    let xOffset = 0;
-                    let yOffset = 0;
-
-                    function dragStart(e) {{
-                        debugLog('Starter drag');
-                        if (e.type === "touchstart") {{
-                            initialX = e.touches[0].clientX - xOffset;
-                            initialY = e.touches[0].clientY - yOffset;
-                        }} else {{
-                            initialX = e.clientX - xOffset;
-                            initialY = e.clientY - yOffset;
-                        }}
-
-                        if (e.target === player) {{
-                            isDragging = true;
-                            player.classList.add('dragging');
-                            debugLog('Spiller draging startet');
-                        }}
-                    }}
-
-                    function drag(e) {{
-                        if (isDragging) {{
-                            e.preventDefault();
-                            debugLog('Drar spiller');
-
-                            if (e.type === "touchmove") {{
-                                currentX = e.touches[0].clientX - initialX;
-                                currentY = e.touches[0].clientY - initialY;
-                            }} else {{
-                                currentX = e.clientX - initialX;
-                                currentY = e.clientY - initialY;
-                            }}
-
-                            xOffset = currentX;
-                            yOffset = currentY;
-
-                            player.style.transform =
-                                `translate(${{currentX}}px, ${{currentY}}px)`;
-                        }}
-                    }}
-
-                    function dragEnd(e) {{
-                        if (isDragging) {{
-                            debugLog('Avslutter drag');
-                            const pos = beregnPosisjonProsent(player);
-                            const spillerId = player.dataset.playerId;
-                            lagreSpillerPosisjon(spillerId, pos);
-
-                            initialX = currentX;
-                            initialY = currentY;
-
-                            isDragging = false;
-                            player.classList.remove('dragging');
-                        }}
-                    }}
-
-                    player.addEventListener('mousedown', dragStart, false);
-                    player.addEventListener('touchstart', dragStart, false);
-                    window.addEventListener('mousemove', drag, false);
-                    window.addEventListener('touchmove', drag, false);
-                    window.addEventListener('mouseup', dragEnd, false);
-                    window.addEventListener('touchend', dragEnd, false);
-                }});
-
-                console.log('Drag-and-drop funksjonalitet lastet');
+                {js_kode}
             </script>
         </body>
-    </html>
+        </html>
     """
+
     return html
 
 
@@ -681,6 +753,18 @@ def hent_alle_spillere_for_periode(
                 len(paa_benken),
                 periode_id,
             )
+
+            logger.debug(
+                "Hentet %d spillere på banen for periode 0",
+                len(paa_banen)
+            )
+
+            logger.debug(
+                "Fant %d spillere på banen og %d på benken",
+                len(paa_banen),
+                len(paa_benken)
+            )
+
             return paa_banen, paa_benken
 
     except Exception as e:
@@ -828,51 +912,119 @@ def lag_pdf(
 
 
 def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) -> bool:
-    """Lagrer grunnformasjon for kampen."""
+    """Lagrer grunnformasjon for kampen og spillerposisjoner i banekartet."""
     try:
+        logger.debug("=== Start lagre_grunnformasjon ===")
+        logger.debug("Parametre: kamp_id=%s, formasjon=%s", kamp_id, formasjon)
+
+        # Valider input
+        if not isinstance(kamp_id, int) or kamp_id <= 0:
+            logger.error("Ugyldig kamp_id: %s", kamp_id)
+            return False
+
+        if not formasjon or not isinstance(formasjon, str):
+            logger.error("Ugyldig formasjon: %s", formasjon)
+            return False
+
         bruker_id_str = st.query_params.get("bruker_id")
+        logger.debug("Hentet bruker_id_str: %s", bruker_id_str)
+
         if not bruker_id_str:
             logger.error("Ingen bruker innlogget")
             return False
 
         try:
             bruker_id = int(bruker_id_str)
-        except (ValueError, TypeError):
-            logger.error("Ugyldig bruker ID")
+            logger.debug("Konvertert bruker_id: %d", bruker_id)
+        except (ValueError, TypeError) as e:
+            logger.error("Ugyldig bruker ID: %s - %s", bruker_id_str, str(e))
             return False
-
-        logger.debug("Prøver å lagre grunnformasjon:")
-        logger.debug("- Bruker ID: %s", bruker_id)
-        logger.debug("- Kamp ID: %s", kamp_id)
-        logger.debug("- Formasjon: %s", formasjon)
 
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
+            logger.debug("Database tilkobling opprettet")
 
-            # Sjekk om tabellen har riktig struktur
-            cursor.execute("""
-                SELECT sql FROM sqlite_master
-                WHERE type='table' AND name='app_innstillinger'
-            """)
-            table_def = cursor.fetchone()
-            logger.debug("Tabell definisjon: %s", table_def[0] if table_def else None)
+            try:
+                # Lagre formasjonstype i app_innstillinger
+                sql = """
+                    INSERT OR REPLACE INTO app_innstillinger
+                    (kamp_id, bruker_id, nokkel, verdi)
+                    VALUES (?, ?, 'grunnformasjon', ?)
+                """
+                cursor.execute(sql, (kamp_id, bruker_id, formasjon))
+                logger.debug("Grunnformasjon lagret i app_innstillinger")
 
-            # Prøv å lagre
-            sql = """
-                INSERT OR REPLACE INTO app_innstillinger
-                (kamp_id, bruker_id, nokkel, verdi)
-                VALUES (?, ?, 'grunnformasjon', ?)
-            """
-            logger.debug("SQL: %s", sql)
-            logger.debug("Parametre: (%s, %s, %s)", kamp_id, bruker_id, formasjon)
+                # Hent spillere som er på banen
+                logger.debug("Henter spillere på banen...")
+                paa_banen, paa_benken = hent_alle_spillere_for_periode(
+                    app_handler, 0, kamp_id
+                )
+                logger.debug("Fant %d spillere på banen", len(paa_banen))
 
-            cursor.execute(sql, (kamp_id, bruker_id, formasjon))
-            conn.commit()
-            logger.debug("Grunnformasjon lagret vellykket")
-            return True
+                if not paa_banen:
+                    logger.warning("Ingen spillere funnet på banen")
+                    return True  # Returnerer True siden grunnformasjon ble lagret
+
+                # Hent posisjoner fra valgt formasjon
+                formations = get_available_formations()
+                if formasjon not in formations:
+                    logger.error("Ugyldig formasjon valgt: %s", formasjon)
+                    return False
+
+                posisjoner = formations[formasjon]["posisjoner"]
+                logger.debug(
+                    "Hentet %d posisjoner fra formasjon %s", len(posisjoner), formasjon
+                )
+
+                # Lag spillerposisjoner dict
+                spillerposisjoner = {}
+                for spiller, pos in zip(paa_banen, posisjoner):
+                    if isinstance(pos, tuple) and len(pos) == 2:
+                        spillerposisjoner[str(spiller["id"])] = {
+                            "x": pos[0],
+                            "y": pos[1],
+                        }
+
+                logger.debug(
+                    "Opprettet spillerposisjoner for %d spillere",
+                    len(spillerposisjoner),
+                )
+
+                # Lagre spillerposisjoner i banekart tabellen
+                if spillerposisjoner:
+                    try:
+                        # Slett eksisterende posisjoner
+                        cursor.execute(
+                            "DELETE FROM banekart WHERE kamp_id = ? AND periode_id = 0",
+                            (kamp_id,),
+                        )
+                        logger.debug("Slettet eksisterende posisjoner")
+
+                        # Lagre nye posisjoner
+                        cursor.execute(
+                            """INSERT INTO banekart (
+                                kamp_id, periode_id, spillerposisjoner, sist_oppdatert
+                            ) VALUES (?, 0, ?, CURRENT_TIMESTAMP)""",
+                            (kamp_id, json.dumps(spillerposisjoner)),
+                        )
+                        logger.debug("Nye posisjoner lagret i banekart")
+
+                    except Exception as e:
+                        logger.error("Feil ved lagring av banekart: %s", str(e))
+                        conn.rollback()
+                        return False
+
+                conn.commit()
+                logger.debug("=== Fullført lagre_grunnformasjon ===")
+                return True
+
+            except Exception as e:
+                logger.error("Feil ved lagring av data: %s", str(e))
+                conn.rollback()
+                return False
 
     except Exception as e:
-        logger.error("Feil ved lagring av grunnformasjon: %s", e)
+        logger.error("Uventet feil i lagre_grunnformasjon: %s", str(e))
         logger.exception("Full feilmelding:")
         return False
 
@@ -1092,7 +1244,44 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
             overflow: visible !important;
         }
         .player {
-            z-index: 1000 !important;
+            position: absolute;
+            cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            touch-action: none;
+            z-index: 1000;
+            background-color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: black;
+            transition: transform 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .player:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .player:active {
+            cursor: grabbing;
+        }
+        .dragging {
+            opacity: 0.8;
+            transform: scale(1.1);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            pointer-events: none;
+            z-index: 1001;
+            cursor: grabbing;
+        }
+        .fotballbane {
+            position: relative;
+            overflow: visible !important;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
         </style>
     """,
@@ -1218,9 +1407,12 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
                             if (
                                 isinstance(data, dict)
-                                and data.get("type") == "lagre_posisjon"
+                                and data.get("type") == "banekart"
                             ):
                                 posisjoner = data.get("posisjoner", {})
+                                logger.debug(
+                                    "Posisjoner fra JavaScript: %s", posisjoner
+                                )
 
                                 if posisjoner:
                                     success = lagre_banekart(
@@ -1240,36 +1432,149 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                             st.error("Ugyldig data mottatt")
 
 
+def sett_opp_startoppstilling(app_handler: AppHandler, kamp_id: int) -> bool:
+    """Setter opp startoppstillingen (periode 0) med de første 11 spillerne i kamptroppen."""
+    try:
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+
+            # Hent de første 11 spillerne fra kamptroppen
+            cursor.execute(
+                """
+                SELECT s.id, s.navn
+                FROM spillere s
+                JOIN kamptropp kt ON s.id = kt.spiller_id
+                WHERE kt.kamp_id = ? AND kt.er_med = 1
+                ORDER BY s.navn
+                LIMIT 11
+            """,
+                (kamp_id,),
+            )
+
+            spillere = cursor.fetchall()
+
+            if len(spillere) < 11:
+                logger.error("Ikke nok spillere i kamptroppen")
+                return False
+
+            # Slett eventuelle eksisterende oppføringer for periode 0
+            cursor.execute(
+                """
+                DELETE FROM spillere_i_periode
+                WHERE kamp_id = ? AND periode_id = 0
+            """,
+                (kamp_id,),
+            )
+
+            # Sett opp startoppstillingen
+            for spiller_id, _ in spillere:
+                cursor.execute(
+                    """
+                    INSERT INTO spillere_i_periode (
+                        kamp_id, periode_id, spiller_id, er_paa, sist_oppdatert
+                    ) VALUES (?, 0, ?, 1, CURRENT_TIMESTAMP)
+                """,
+                    (kamp_id, spiller_id),
+                )
+
+            conn.commit()
+            logger.info("Startoppstilling satt opp for kamp %s", kamp_id)
+            return True
+
+    except Exception as e:
+        logger.error("Feil ved oppsett av startoppstilling: %s", str(e))
+        return False
+
+
+def get_bruker_id() -> int:
+    """Henter bruker ID fra query parameters."""
+    bruker_id_str = st.query_params.get("bruker_id")
+    if not bruker_id_str:
+        st.error("Ingen bruker innlogget")
+        st.stop()
+
+    try:
+        return int(bruker_id_str)
+    except ValueError as e:
+        st.error(f"Ugyldig bruker ID format: {bruker_id_str}")
+        logger.error("Konvertering av bruker_id feilet: %s", e)
+        st.stop()
+
+
 def vis_formasjon_side(app_handler: AppHandler) -> None:
     """Viser formasjonssiden med periodevis oversikt og grunnformasjon."""
     try:
+        logger.debug("=== Start vis_formasjon_side ===")
+
         # Sjekk autentisering
         if not check_auth(app_handler.auth_handler):
+            logger.error("Autentisering feilet - bruker ikke innlogget")
+            st.error("Du må være innlogget for å se denne siden")
             return
 
         st.header("Formasjon")
 
         # Hent kamp ID fra query parameters
         kamp_id = st.query_params.get("kamp_id")
+        logger.debug("Hentet kamp_id fra query params: %s", kamp_id)
+
         if not kamp_id:
+            logger.warning("Ingen kamp valgt i query params")
             st.warning("Velg en kamp først")
             if st.button("Gå til oppsett for å velge kamp"):
+                bruker_id = st.query_params.get("bruker_id")
+                logger.debug("Beholder bruker_id: %s ved redirect", bruker_id)
+                st.query_params.clear()
                 st.query_params["page"] = "oppsett"
+                if bruker_id:
+                    st.query_params["bruker_id"] = bruker_id
                 st.rerun()
+            return
+
+        try:
+            kamp_id = int(kamp_id)
+            logger.debug("Konvertert kamp_id til int: %d", kamp_id)
+        except (ValueError, TypeError) as e:
+            logger.error("Ugyldig kamp_id format: %s - %s", kamp_id, str(e))
+            st.error("Ugyldig kamp ID format")
+            return
+
+        # Sjekk at bruker_id er satt
+        try:
+            bruker_id = get_bruker_id()
+            logger.debug("Hentet bruker_id: %d", bruker_id)
+        except Exception as e:
+            logger.error("Feil ved henting av bruker_id: %s", str(e))
+            st.error("Kunne ikke hente bruker ID")
             return
 
         # Vis grunnformasjon først
         st.subheader("Velg grunnformasjon")
 
-        formations = get_available_formations()
+        try:
+            formations = get_available_formations()
+            logger.debug("Hentet %d tilgjengelige formasjoner", len(formations))
+            for form in formations:
+                logger.debug("Tilgjengelig formasjon: %s", form)
+        except Exception as e:
+            logger.error("Feil ved henting av formasjoner: %s", str(e))
+            st.error("Kunne ikke hente tilgjengelige formasjoner")
+            return
 
         # Hent lagret grunnformasjon
-        lagret_formasjon = hent_grunnformasjon(app_handler, int(kamp_id))
+        try:
+            lagret_formasjon = hent_grunnformasjon(app_handler, kamp_id)
+            logger.debug("Hentet lagret formasjon: %s", lagret_formasjon)
+        except Exception as e:
+            logger.error("Feil ved henting av grunnformasjon: %s", str(e))
+            st.error("Kunne ikke hente lagret formasjon")
+            return
 
         # Finn index for lagret formasjon
         formasjon_index = (
             list(formations.keys()).index(lagret_formasjon) if lagret_formasjon else 0
         )
+        logger.debug("Bruker formasjon index: %d", formasjon_index)
 
         selected_formation = st.selectbox(
             "Velg formasjon",
@@ -1282,6 +1587,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             ),
             help="Velg ønsket grunnformasjon for laget",
         )
+        logger.debug("Valgt formasjon: %s", selected_formation)
 
         if selected_formation:
             st.write(f"Valgt formasjon: {selected_formation}")
@@ -1291,52 +1597,116 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
 
             # Vis fotballbanen med valgt formasjon
             posisjoner = formations[selected_formation]["posisjoner"]
-
-            # Hent spillere som er på banen
-            paa_banen, _ = hent_alle_spillere_for_periode(app_handler, 0, int(kamp_id))
-            spillere_paa_banen: List[SpillerPosisjon] = []
-            for spiller in paa_banen:
-                spiller_posisjon: SpillerPosisjon = {
-                    "id": spiller["id"],
-                    "navn": spiller["navn"],
-                    "posisjon_index": None,
-                    "posisjon": None,
-                }
-                spillere_paa_banen.append(spiller_posisjon)
-
-            fotballbane = lag_fotballbane_html(
-                posisjoner=posisjoner,
-                spillere=spillere_paa_banen,
-                kamp_id=int(kamp_id),
-                periode_id=None,
+            logger.debug(
+                "Hentet %d posisjoner for formasjon %s",
+                len(posisjoner),
+                selected_formation,
             )
-            components.html(fotballbane, height=1000)
 
-            # Lagre grunnformasjon
-            if st.button("Lagre som grunnformasjon"):
-                success = lagre_grunnformasjon(
-                    app_handler, int(kamp_id), selected_formation
+            try:
+                # Hent spillere som er på banen
+                paa_banen, _ = hent_alle_spillere_for_periode(app_handler, 0, kamp_id)
+                logger.debug(
+                    "Hentet %d spillere på banen for periode 0", len(paa_banen)
                 )
-                if success:
-                    st.success("Grunnformasjon lagret")
-                else:
-                    st.error("Kunne ikke lagre grunnformasjon")
+
+                # Hvis ingen spillere er satt opp for periode 0, sett opp startoppstilling
+                if not paa_banen:
+                    logger.info(
+                        "Ingen spillere funnet for periode 0, setter opp startoppstilling"
+                    )
+                    if sett_opp_startoppstilling(app_handler, kamp_id):
+                        paa_banen, _ = hent_alle_spillere_for_periode(
+                            app_handler, 0, kamp_id
+                        )
+                        logger.debug(
+                            "Startoppstilling satt opp, hentet %d spillere",
+                            len(paa_banen),
+                        )
+                    else:
+                        logger.error("Kunne ikke sette opp startoppstilling")
+                        st.error("Kunne ikke sette opp startoppstilling")
+                        return
+
+                spillere_paa_banen: List[SpillerPosisjon] = []
+                for spiller in paa_banen:
+                    spiller_posisjon: SpillerPosisjon = {
+                        "id": spiller["id"],
+                        "navn": spiller["navn"],
+                        "posisjon_index": None,
+                        "posisjon": None,
+                    }
+                    spillere_paa_banen.append(spiller_posisjon)
+                    logger.debug(
+                        "La til spiller %s (ID: %d) på banen",
+                        spiller["navn"],
+                        spiller["id"],
+                    )
+
+                fotballbane = lag_fotballbane_html(
+                    posisjoner=posisjoner,
+                    spillere=spillere_paa_banen,
+                    kamp_id=kamp_id,
+                    periode_id=None,
+                )
+                components.html(fotballbane, height=1000)
+                logger.debug("Fotballbane HTML generert og vist")
+
+                # Lagre grunnformasjon
+                if st.button("Lagre som grunnformasjon"):
+                    logger.info(
+                        "Forsøker å lagre grunnformasjon %s for kamp %d",
+                        selected_formation,
+                        kamp_id,
+                    )
+                    success = lagre_grunnformasjon(
+                        app_handler, kamp_id, selected_formation
+                    )
+                    if success:
+                        logger.info(
+                            "Grunnformasjon %s lagret for kamp %d",
+                            selected_formation,
+                            kamp_id,
+                        )
+                        st.success("Grunnformasjon lagret")
+                    else:
+                        logger.error(
+                            "Kunne ikke lagre grunnformasjon %s for kamp %d",
+                            selected_formation,
+                            kamp_id,
+                        )
+                        st.error("Kunne ikke lagre grunnformasjon")
+
+            except Exception as e:
+                logger.error("Feil ved oppsett av fotballbane: %s", str(e))
+                logger.exception("Full feilmelding:")
+                st.error("Kunne ikke vise fotballbanen")
+                return
 
         st.divider()
 
         # Vis periodevis oversikt
         st.subheader("Periodevis oversikt")
-        vis_periodevis_oversikt(app_handler, int(kamp_id))
+        try:
+            vis_periodevis_oversikt(app_handler, kamp_id)
+            logger.debug("Periodevis oversikt vist for kamp %d", kamp_id)
+        except Exception as e:
+            logger.error("Feil ved visning av periodevis oversikt: %s", str(e))
+            st.error("Kunne ikke vise periodevis oversikt")
+
+        logger.debug("=== Slutt vis_formasjon_side ===")
 
     except Exception as e:
-        logger.error("Feil ved visning av formasjon: %s", e)
+        logger.error("Uventet feil i vis_formasjon_side: %s", str(e))
+        logger.exception("Full feilmelding:")
         st.error("En feil oppstod ved visning av formasjon")
 
 
 def vis_formation_page(app_handler: AppHandler):
     """Viser formasjonssiden."""
     try:
-        # Sjekk autentisering
+        # Sjekk autentisering og behold bruker_id
+        bruker_id = st.query_params.get("bruker_id")
         if not check_auth(app_handler.auth_handler):
             return
 
@@ -1347,9 +1717,16 @@ def vis_formation_page(app_handler: AppHandler):
         if not kamp_id:
             st.warning("Velg en kamp først")
             if st.button("Gå til oppsett for å velge kamp"):
+                st.query_params.clear()
                 st.query_params["page"] = "oppsett"
+                if bruker_id:
+                    st.query_params["bruker_id"] = bruker_id
                 st.rerun()
             return
+
+        # Sett bruker_id tilbake i query params hvis den mangler
+        if bruker_id and not st.query_params.get("bruker_id"):
+            st.query_params["bruker_id"] = bruker_id
 
         # Vis formasjonssiden med app_handler
         vis_formasjon_side(app_handler)
