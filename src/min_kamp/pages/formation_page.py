@@ -181,6 +181,24 @@ def hent_lagret_formasjon(app_handler: AppHandler, kamp_id: int) -> Optional[Dic
         return None
 
 
+def beregn_spiller_posisjon(
+    x_percent: float, y_percent: float, width: int, height: int, margin: int = 50
+) -> Tuple[float, float]:
+    """
+    Beregner spillerens pikselposisjon basert på prosentposisjoner.
+    Tar hensyn til banens margin og faktiske spillbare område.
+    """
+    # Beregn det faktiske spillbare området
+    spillbart_width = width - 2 * margin
+    spillbart_height = height - 2 * margin
+
+    # Konverter prosent til piksler innenfor det spillbare området
+    x_pixels = margin + (spillbart_width * float(x_percent) / 100)
+    y_pixels = margin + (spillbart_height * float(y_percent) / 100)
+
+    return x_pixels, y_pixels
+
+
 def lag_fotballbane_html(
     posisjoner: Optional[List[Tuple[float, float]]] = None,
     spillere: Optional[List[SpillerPosisjon]] = None,
@@ -190,13 +208,11 @@ def lag_fotballbane_html(
     kamp_id: Optional[int] = None,
     periode_id: Optional[int] = None,
 ) -> str:
-    """Lager HTML for fotballbanen med spillere."""
+    """Lager HTML for fotballbanen."""
     margin = 50
-    spiller_radius = 20
-    bench_start_x = width + margin
-    bench_spacing = spiller_radius * 3
-    sixteen_meter_height = 150
     sixteen_meter_width = 400
+    sixteen_meter_height = 150
+    spiller_radius = 40
 
     # Generer HTML for spillerposisjonene
     spillere_html = ""
@@ -206,66 +222,22 @@ def lag_fotballbane_html(
                 logger.warning(f"Ugyldig posisjon for spiller {spiller['id']}: {pos}")
                 continue
 
-            x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height)
+            x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height, margin)
             spillere_html += f"""
-            <div class="spiller" draggable="true"
+            <div class="spiller"
                  id="spiller_{spiller['id']}"
                  data-spiller-id="{spiller['id']}"
-                 style="position: absolute;
-                        left: {x-spiller_radius}px;
-                        top: {y-spiller_radius}px;
-                        width: {spiller_radius*2}px;
-                        height: {spiller_radius*2}px;
-                        background-color: white;
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 12px;
-                        color: black;
-                        cursor: move;
-                        user-select: none;
-                        -webkit-user-select: none;
-                        touch-action: none;
-                        z-index: 1000;">
+                 style="left: {x-spiller_radius}px;
+                        top: {y-spiller_radius}px;">
                 {spiller['navn']}
             </div>
             """
 
-    # Generer HTML for spillere på benken
-    if spillere_paa_benken:
-        for i, spiller in enumerate(spillere_paa_benken):
-            y = margin + i * bench_spacing
-            spillere_html += f"""
-            <div class="spiller" draggable="true"
-                 id="spiller_{spiller['id']}"
-                 data-spiller-id="{spiller['id']}"
-                 style="position: absolute;
-                        left: {bench_start_x}px;
-                        top: {y}px;
-                        width: {spiller_radius*2}px;
-                        height: {spiller_radius*2}px;
-                        background-color: #ddd;
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 12px;
-                        color: black;
-                        cursor: move;
-                        user-select: none;
-                        -webkit-user-select: none;
-                        touch-action: none;
-                        z-index: 1000;">
-                {spiller['navn']}
-            </div>
-            """
-
-    # Bygg komplett HTML
     html = f"""
         <!DOCTYPE html>
         <html>
         <head>
+            <meta charset="utf-8">
             <style>
                 .fotballbane {{
                     position: relative;
@@ -273,19 +245,27 @@ def lag_fotballbane_html(
                     touch-action: none;
                     user-select: none;
                     -webkit-user-select: none;
+                    background-color: #2e8b57;
                 }}
                 .spiller {{
                     position: absolute;
+                    width: {spiller_radius*2}px;
+                    height: {spiller_radius*2}px;
+                    background-color: white;
+                    border: 3px solid #1565C0;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                     cursor: grab;
                     user-select: none;
-                    -webkit-user-select: none;
-                    touch-action: none;
-                    transition: transform 0.2s, box-shadow 0.2s;
+                    font-size: 16px;
+                    font-weight: bold;
+                    z-index: 1000;
                 }}
                 .spiller:hover {{
                     transform: scale(1.1);
                     box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-                    cursor: grab;
                 }}
                 .spiller:active {{
                     cursor: grabbing;
@@ -296,29 +276,145 @@ def lag_fotballbane_html(
                     box-shadow: 0 8px 16px rgba(0,0,0,0.4);
                     pointer-events: none;
                 }}
-                .lagre-knapp {{
-                    position: absolute;
-                    top: {height + margin}px;
-                    left: {margin}px;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                }}
-                .lagre-knapp:hover {{
-                    background-color: #45a049;
-                }}
             </style>
+            <script>
+            function getSpillerPosisjoner() {{
+                const spillere = document.querySelectorAll('.spiller:not(.paa-benken)');
+                const posisjoner = {{}};
+                const bane = document.querySelector('.fotballbane');
+                const baneRect = bane.getBoundingClientRect();
+                const margin = {margin};
+
+                // Beregn det spillbare området
+                const spillbartWidth = baneRect.width - 2 * margin;
+                const spillbartHeight = baneRect.height - 2 * margin;
+
+                spillere.forEach(spiller => {{
+                    const rect = spiller.getBoundingClientRect();
+                    const spillerId = spiller.getAttribute('data-spiller-id');
+
+                    // Beregn senterpunkt for spilleren
+                    const spillerSenterX = rect.left + rect.width/2;
+                    const spillerSenterY = rect.top + rect.height/2;
+
+                    // Beregn relativ posisjon fra banens venstre/topp kant
+                    const relativeX = spillerSenterX - baneRect.left - margin;
+                    const relativeY = spillerSenterY - baneRect.top - margin;
+
+                    // Konverter til prosent av spillbart område
+                    const x = (relativeX / spillbartWidth) * 100;
+                    const y = (relativeY / spillbartHeight) * 100;
+
+                    posisjoner[spillerId] = {{
+                        x: Math.max(0, Math.min(100, x)).toFixed(2),
+                        y: Math.max(0, Math.min(100, y)).toFixed(2)
+                    }};
+                }});
+
+                return posisjoner;
+            }}
+
+            function lagrePosisjoner() {{
+                const posisjoner = getSpillerPosisjoner();
+                const bane = document.querySelector('.fotballbane');
+                const periode_id = bane.getAttribute('data-periode-id');
+
+                console.log('Lagrer posisjoner:', {{ periode_id, posisjoner }});
+
+                // Send data til Streamlit via URL-parameter
+                const data = {{
+                    periode_id: periode_id,
+                    posisjoner: posisjoner
+                }};
+
+                // Oppdater URL med data
+                const searchParams = new URLSearchParams(window.parent.location.search);
+                searchParams.set('banekart_data', JSON.stringify(data));
+                const newUrl = `${{window.parent.location.pathname}}?${{searchParams.toString()}}`;
+                window.parent.history.pushState({{}}, '', newUrl);
+
+                // Trigger en Streamlit rerun
+                window.parent.postMessage({{
+                    type: 'streamlit:setUrlInfo',
+                    queryParams: Object.fromEntries(searchParams)
+                }}, '*');
+            }}
+
+            document.addEventListener('DOMContentLoaded', function() {{
+                const spillere = document.querySelectorAll('.spiller');
+                let aktivSpiller = null;
+                let startX = 0;
+                let startY = 0;
+                let offsetX = 0;
+                let offsetY = 0;
+
+                spillere.forEach(spiller => {{
+                    spiller.addEventListener('mousedown', startDrag);
+                    spiller.addEventListener('touchstart', startDrag);
+                }});
+
+                function startDrag(e) {{
+                    e.preventDefault();
+                    aktivSpiller = this;
+                    aktivSpiller.classList.add('dragging');
+
+                    if (e.type === 'mousedown') {{
+                        startX = e.clientX;
+                        startY = e.clientY;
+                    }} else {{
+                        startX = e.touches[0].clientX;
+                        startY = e.touches[0].clientY;
+                    }}
+
+                    const style = window.getComputedStyle(aktivSpiller);
+                    offsetX = parseFloat(style.left) || 0;
+                    offsetY = parseFloat(style.top) || 0;
+
+                    document.addEventListener('mousemove', drag);
+                    document.addEventListener('touchmove', drag);
+                    document.addEventListener('mouseup', stopDrag);
+                    document.addEventListener('touchend', stopDrag);
+                }}
+
+                function drag(e) {{
+                    if (!aktivSpiller) return;
+
+                    let clientX, clientY;
+                    if (e.type === 'mousemove') {{
+                        clientX = e.clientX;
+                        clientY = e.clientY;
+                    }} else {{
+                        clientX = e.touches[0].clientX;
+                        clientY = e.touches[0].clientY;
+                    }}
+
+                    const dx = clientX - startX;
+                    const dy = clientY - startY;
+
+                    aktivSpiller.style.left = `${{offsetX + dx}}px`;
+                    aktivSpiller.style.top = `${{offsetY + dy}}px`;
+                }}
+
+                function stopDrag() {{
+                    if (aktivSpiller) {{
+                        aktivSpiller.classList.remove('dragging');
+                        aktivSpiller = null;
+                        lagrePosisjoner();
+                    }}
+
+                    document.removeEventListener('mousemove', drag);
+                    document.removeEventListener('touchmove', drag);
+                    document.removeEventListener('mouseup', stopDrag);
+                    document.removeEventListener('touchend', stopDrag);
+                }}
+            }});
+            </script>
         </head>
         <body>
-            <div style="width: {width+300}px; height: {height}px;
-                        position: relative; overflow: visible;"
-                 class="fotballbane"
-                 data-periode-id="{periode_id}">
-                <svg width="{width}" height="{height}"
-                     style="background-color: #2e8b57;">
+            <div class="fotballbane"
+                 data-periode-id="{periode_id if periode_id is not None else 0}"
+                 style="width: {width}px; height: {height}px;">
+                <svg width="{width}" height="{height}">
                     <!-- Ytre ramme -->
                     <rect x="{margin}" y="{margin}"
                           width="{width-2*margin}" height="{height-2*margin}"
@@ -330,11 +426,12 @@ def lag_fotballbane_html(
                           stroke="white" stroke-width="2"/>
 
                     <!-- Midtsirkel -->
-                    <circle cx="{width/2}" cy="{height/2}" r="{height/8}"
+                    <circle cx="{width/2}" cy="{height/2}" r="100"
                             fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Øvre 16-meter -->
-                    <rect x="{(width-sixteen_meter_width)/2}" y="{margin}"
+                    <rect x="{(width-sixteen_meter_width)/2}"
+                          y="{margin}"
                           width="{sixteen_meter_width}"
                           height="{sixteen_meter_height}"
                           fill="none" stroke="white" stroke-width="2"/>
@@ -346,202 +443,12 @@ def lag_fotballbane_html(
                           height="{sixteen_meter_height}"
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
-
-                <!-- Spillere -->
                 {spillere_html}
             </div>
-            <button class="lagre-knapp" onclick="lagreFormasjon({periode_id})">
-                Lagre posisjoner
-            </button>
-            <script>
-                document.addEventListener('DOMContentLoaded', () => {{
-                    const spillere = document.querySelectorAll('.spiller');
-                    const fotballbane = document.querySelector('.fotballbane');
-
-                    let draggedElement = null;
-                    let initialX = 0;
-                    let initialY = 0;
-                    let isDragging = false;
-
-                    spillere.forEach(spiller => {{
-                        spiller.addEventListener('mousedown', handleDragStart);
-                        spiller.addEventListener(
-                            'touchstart',
-                            handleTouchStart,
-                            {{ passive: false }}
-                        );
-                    }});
-                    
-                    document.addEventListener('mousemove', handleDrag);
-                    document.addEventListener('mouseup', handleDragEnd);
-                    document.addEventListener(
-                        'touchmove',
-                        handleTouchMove,
-                        {{ passive: false }}
-                    );
-
-                    function handleTouchStart(event) {{
-                        if (isDragging) return;
-                        event.preventDefault();
-                        const touch = event.touches[0];
-                        draggedElement = this;
-                        const rect = draggedElement.getBoundingClientRect();
-                        initialX = touch.clientX - rect.left;
-                        initialY = touch.clientY - rect.top;
-                        draggedElement.classList.add('dragging');
-                        isDragging = true;
-                    }}
-
-                    function handleTouchMove(event) {{
-                        if (!draggedElement || !isDragging) return;
-                        event.preventDefault();
-
-                        const touch = event.touches[0];
-                        const x = touch.clientX - initialX;
-                        const y = touch.clientY - initialY;
-
-                        // Begrens bevegelse innenfor fotballbanen
-                        const baneRect = fotballbane.getBoundingClientRect();
-                        const spillerRect = draggedElement.getBoundingClientRect();
-
-                        const minX = baneRect.left;
-                        const maxX = baneRect.right - spillerRect.width;
-                        const minY = baneRect.top;
-                        const maxY = baneRect.bottom - spillerRect.height;
-
-                        const boundedX = Math.max(minX, Math.min(maxX, x));
-                        const boundedY = Math.max(minY, Math.min(maxY, y));
-
-                        draggedElement.style.left = boundedX + 'px';
-                        draggedElement.style.top = boundedY + 'px';
-                    }}
-
-                    function handleTouchEnd(event) {{
-                        if (!draggedElement || !isDragging) return;
-                        event.preventDefault();
-                        draggedElement.classList.remove('dragging');
-                        draggedElement = null;
-                        isDragging = false;
-                    }}
-
-                    function handleDragStart(event) {{
-                        if (isDragging) return;
-                        draggedElement = this;
-                        const rect = draggedElement.getBoundingClientRect();
-                        initialX = event.clientX - rect.left;
-                        initialY = event.clientY - rect.top;
-                        draggedElement.classList.add('dragging');
-                        isDragging = true;
-                    }}
-
-                    function handleDrag(event) {{
-                        if (!draggedElement || !isDragging) return;
-                        event.preventDefault();
-
-                        const x = event.clientX - initialX;
-                        const y = event.clientY - initialY;
-
-                        // Begrens bevegelse innenfor fotballbanen
-                        const baneRect = fotballbane.getBoundingClientRect();
-                        const spillerRect = draggedElement.getBoundingClientRect();
-
-                        const minX = baneRect.left;
-                        const maxX = baneRect.right - spillerRect.width;
-                        const minY = baneRect.top;
-                        const maxY = baneRect.bottom - spillerRect.height;
-
-                        const boundedX = Math.max(minX, Math.min(maxX, x));
-                        const boundedY = Math.max(minY, Math.min(maxY, y));
-
-                        draggedElement.style.left = boundedX + 'px';
-                        draggedElement.style.top = boundedY + 'px';
-                    }}
-
-                    function handleDragEnd(event) {{
-                        if (!draggedElement || !isDragging) return;
-                        draggedElement.classList.remove('dragging');
-                        draggedElement = null;
-                        isDragging = false;
-                    }}
-                }});
-
-                function lagreFormasjon(periodeId) {{
-                    const spillere = document.querySelectorAll('.spiller');
-                    const fotballbane = document.querySelector('.fotballbane');
-                    const posisjoner = {{}};
-
-                    try {{
-                        spillere.forEach(spiller => {{
-                            const spillerId = spiller.dataset.spillerId;
-                            const rect = spiller.getBoundingClientRect();
-                            const baneRect = fotballbane.getBoundingClientRect();
-
-                            // Beregn relative posisjoner i prosent
-                            const x = (
-                                (rect.left - baneRect.left) / baneRect.width
-                            ) * 100;
-                            const y = (
-                                (rect.top - baneRect.top) / baneRect.height
-                            ) * 100;
-
-                            // Begrens verdiene til 0-100%
-                            const boundedX = Math.max(0, Math.min(100, x));
-                            const boundedY = Math.max(0, Math.min(100, y));
-
-                            posisjoner[spillerId] = {{x: boundedX, y: boundedY}};
-                        }});
-
-                        const data = {{
-                            type: 'banekart',
-                            posisjoner: posisjoner
-                        }};
-
-                        window.parent.postMessage({{
-                            type: 'streamlit:setQueryParam',
-                            queryParams: {{
-                                [`banekart_${{periodeId}}`]: JSON.stringify(data)
-                            }}
-                        }}, '*');
-                    }} catch (error) {{
-                        console.error('Feil ved lagring av posisjoner:', error);
-                    }}
-                }}
-            </script>
         </body>
         </html>
     """
-
     return html
-
-
-def beregn_spiller_posisjon(
-    x: Optional[float], y: Optional[float], width: int = 800, height: int = 1000
-) -> Tuple[float, float]:
-    """Beregner spillerens posisjon på banen.
-
-    Args:
-        x: X-koordinat i prosent (0-100)
-        y: Y-koordinat i prosent (0-100)
-        width: Banens bredde i piksler
-        height: Banens høyde i piksler
-
-    Returns:
-        Tuple med (x,y) koordinater i piksler
-    """
-    margin = 50
-
-    # Hvis x eller y er None, returner midtpunktet av banen
-    if x is None or y is None:
-        return width / 2, height / 2
-
-    # Beregn x-koordinat med margin
-    ny_x = margin + (x / 100) * (width - 2 * margin)
-
-    # Beregn y-koordinat med margin
-    # Juster y for å unngå overlapp med 16-meter
-    ny_y = margin + (y / 100) * (height - 2 * margin)
-
-    return ny_x, ny_y
 
 
 def get_available_formations() -> Dict[str, Dict]:
@@ -1217,6 +1124,15 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
     # Hent kampinnstillinger først
     _, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
 
+    # Sett aktiv periode fra URL eller bruk 0 som standard
+    aktiv_periode_str = st.query_params.get("periode_id", "0")
+    try:
+        aktiv_periode = int(aktiv_periode_str)
+    except ValueError:
+        aktiv_periode = 0
+
+    logger.debug("Aktiv periode: %d", aktiv_periode)
+
     perioder = []
     for i in range(antall_perioder):
         perioder.append(
@@ -1267,21 +1183,19 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
         }
         .spiller {
             position: absolute;
-            cursor: grab;
-            user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            touch-action: none;
-            z-index: 1000;
+            width: 80px;
+            height: 80px;
             background-color: white;
+            border: 3px solid #1565C0;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
-            color: black;
-            transition: transform 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            cursor: grab;
+            user-select: none;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 1000;
         }
         .spiller:hover {
             transform: scale(1.1);
@@ -1295,8 +1209,6 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
             transform: scale(1.1);
             box-shadow: 0 8px 16px rgba(0,0,0,0.4);
             pointer-events: none;
-            z-index: 1001;
-            cursor: grabbing;
         }
         .fotballbane {
             position: relative;
@@ -1405,42 +1317,56 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                         st.error("Kunne ikke lagre formasjon")
 
             if selected_formation:
-                # Sjekk om vi har mottatt posisjonsdata
-                banekart_data = st.query_params.get(f"banekart_{periode_id}")
-                if banekart_data:
+                # Sjekk om vi har mottatt posisjonsdata fra URL
+                banekart_data_str = st.query_params.get("banekart_data")
+                if banekart_data_str:
                     try:
-                        data = json.loads(banekart_data)
-                        logger.debug("Mottok data fra JavaScript: %s", data)
+                        banekart_data = json.loads(banekart_data_str)
+                        logger.debug("Mottok data fra URL: %s", banekart_data)
 
-                        if isinstance(data, dict) and data.get("type") == "banekart":
-                            posisjoner = data.get("posisjoner", {})
-                            logger.debug("Posisjoner fra JavaScript: %s", posisjoner)
+                        if isinstance(banekart_data, dict):
+                            try:
+                                periode_id = int(banekart_data.get("periode_id", 0))
+                                posisjoner = banekart_data.get("posisjoner", {})
+                                logger.debug("Posisjoner fra URL: %s", posisjoner)
 
-                            if posisjoner:
-                                success = lagre_banekart(
-                                    app_handler, kamp_id, periode_id, posisjoner
-                                )
-                                if success:
-                                    st.success("Posisjoner lagret")
-                                    # Fjern query parameter og oppdater siden
-                                    del st.query_params[f"banekart_{periode_id}"]
-                                    st.rerun()
+                                if posisjoner:
+                                    success = lagre_banekart(
+                                        app_handler, kamp_id, periode_id, posisjoner
+                                    )
+                                    if success:
+                                        st.success("Posisjoner lagret")
+                                        # Fjern data fra URL
+                                        st.query_params.pop("banekart_data", None)
+                                        st.rerun()
+                                    else:
+                                        st.error("Kunne ikke lagre posisjoner")
                                 else:
-                                    st.error("Kunne ikke lagre posisjoner")
-                            else:
-                                st.warning("Ingen posisjoner å lagre")
+                                    st.warning("Ingen posisjoner å lagre")
+                            except ValueError as e:
+                                logger.error("Ugyldig periode_id: %s", str(e))
+                                st.error("Ugyldig periode ID")
                     except json.JSONDecodeError as e:
-                        logger.error("Ugyldig JSON-data: %s", e)
+                        logger.error("Ugyldig JSON data: %s", str(e))
                         st.error("Ugyldig data mottatt")
+                    except Exception as e:
+                        logger.error("Feil ved håndtering av banekart data: %s", str(e))
+                        st.error("Kunne ikke håndtere banekart data")
+
+                    # Fjern data fra URL uansett
+                    st.query_params.pop("banekart_data", None)
 
                 # Vis fotballbanen med spillere
                 posisjoner = formations[selected_formation]["posisjoner"]
 
                 # Hent lagret banekart hvis det finnes
                 lagret_banekart = hent_banekart(app_handler, kamp_id, periode_id)
+                logger.debug("Hentet lagret banekart: %s", lagret_banekart)
 
-                # Konverter spillere til SpillerPosisjon format
+                # Konverter spillere til SpillerPosisjon format og sett posisjoner
                 spillere_paa_banen: List[SpillerPosisjon] = []
+                brukte_posisjoner = 0
+
                 for spiller in paa_banen:
                     spiller_posisjon: SpillerPosisjon = {
                         "id": spiller["id"],
@@ -1450,11 +1376,25 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     }
 
                     # Hvis vi har lagret banekart, bruk de lagrede posisjonene
-                    if lagret_banekart:
-                        for spiller_id, posisjon in lagret_banekart.items():
-                            if str(spiller["id"]) == str(spiller_id):
-                                spiller_posisjon["posisjon"] = posisjon
+                    if lagret_banekart and str(spiller["id"]) in lagret_banekart:
+                        pos = lagret_banekart[str(spiller["id"])]
+                        logger.debug(
+                            "Bruker lagret posisjon for spiller %s: %s",
+                            spiller["id"],
+                            pos,
+                        )
+                        spiller_posisjon["posisjon"] = pos
+                        x_percent = float(pos["x"])
+                        y_percent = float(pos["y"])
+                        posisjoner[brukte_posisjoner] = (x_percent, y_percent)
+                    else:
+                        logger.debug(
+                            "Bruker standardposisjon %d for spiller %s",
+                            brukte_posisjoner,
+                            spiller["id"],
+                        )
 
+                    brukte_posisjoner += 1
                     spillere_paa_banen.append(spiller_posisjon)
 
                 fotballbane = lag_fotballbane_html(
@@ -1464,6 +1404,11 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     kamp_id=int(kamp_id),
                     periode_id=periode_id,
                 )
+
+                # Oppdater URL med aktiv periode når fotballbane vises
+                if periode["id"] == aktiv_periode:
+                    st.query_params["periode_id"] = str(periode_id)
+
                 components.html(fotballbane, height=1000)
 
 
@@ -1559,6 +1504,71 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             st.error("Ugyldig kamp ID")
             return
 
+        # Sett opp event handler for banekart
+        components.html(
+            """
+            <div id="banekart-container"></div>
+            <script>
+            function sendToStreamlit(data) {
+                try {
+                    console.log('Prøver å sende data:', data);
+                    const event = new CustomEvent('streamlit:message', {
+                        bubbles: true,
+                        detail: { type: 'streamlit:banekart', data: data }
+                    });
+                    window.dispatchEvent(event);
+                    console.log('Data sendt');
+                } catch (error) {
+                    console.error('Feil ved sending av data:', error);
+                }
+            }
+
+            window.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'streamlit:banekart') {
+                    console.log('Mottok banekart data:', e.data);
+                    sendToStreamlit(e.data.data);
+                }
+            });
+            </script>
+            """,
+            height=0,
+        )
+
+        # Håndter banekart event
+        if "component_value" in st.session_state:
+            banekart_data = st.session_state.component_value
+            logger.debug("Mottok banekart data i session state: %s", banekart_data)
+
+            try:
+                if isinstance(banekart_data, dict):
+                    periode_id = int(banekart_data.get("periode_id", 0))
+                    posisjoner = banekart_data.get("posisjoner", {})
+
+                    if posisjoner:
+                        logger.debug(
+                            "Lagrer posisjoner for periode %d: %s",
+                            periode_id,
+                            posisjoner,
+                        )
+                        success = lagre_banekart(
+                            app_handler, kamp_id, periode_id, posisjoner
+                        )
+                        if success:
+                            logger.info("Posisjoner lagret for periode %d", periode_id)
+                            st.success("Posisjoner lagret")
+                            del st.session_state["component_value"]
+                            st.rerun()
+                        else:
+                            logger.error(
+                                "Kunne ikke lagre posisjoner for periode %d", periode_id
+                            )
+                            st.error("Kunne ikke lagre posisjoner")
+                    else:
+                        logger.warning("Ingen posisjoner å lagre")
+            except Exception as e:
+                logger.error("Feil ved håndtering av banekart data: %s", str(e))
+                st.error("Kunne ikke håndtere banekart data")
+
         # Hent tilgjengelige formasjoner
         try:
             formations = get_available_formations()
@@ -1596,8 +1606,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                 logger.debug("Lagre grunnformasjon knapp trykket")
                 try:
                     logger.debug(
-                        "Forsøker å lagre grunnformasjon: %s",
-                        selected_formation
+                        "Forsøker å lagre grunnformasjon: %s", selected_formation
                     )
                     if lagre_grunnformasjon(app_handler, kamp_id, selected_formation):
                         logger.info("Grunnformasjon lagret: %s", selected_formation)
