@@ -207,6 +207,7 @@ def lag_fotballbane_html(
     height: int = 1000,
     kamp_id: Optional[int] = None,
     periode_id: Optional[int] = None,
+    app_handler: Optional[AppHandler] = None,
 ) -> str:
     """Lager HTML for fotballbanen."""
     margin = 50
@@ -232,6 +233,53 @@ def lag_fotballbane_html(
                 {spiller['navn']}
             </div>
             """
+
+    # Generer periode og bytter info HTML
+    periode_html = ""
+    bytter_html = ""
+    if periode_id is not None and kamp_id is not None and app_handler is not None:
+        # Hent kampinnstillinger
+        kamplengde, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
+        minutter_per_periode = kamplengde // antall_perioder
+        periode_nummer = periode_id + 1  # Konverter til 1-basert
+        periode_minutter = minutter_per_periode * periode_id
+
+        periode_html = f"""
+        <div style="position: absolute; top: 10px; left: 10px; background-color: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 5px; font-weight: bold; z-index: 1000;">
+            Periode {periode_nummer}: {periode_minutter} min
+        </div>
+        """
+
+        # Hent bytter for perioden
+        try:
+            with app_handler._database_handler.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT s.navn, b.er_paa
+                    FROM bytteplan b
+                    JOIN spillere s ON b.spiller_id = s.id
+                    WHERE b.kamp_id = ? AND b.periode = ?
+                    ORDER BY b.er_paa DESC
+                """,
+                    (kamp_id, periode_id),
+                )
+
+                bytter = cursor.fetchall()
+                if bytter:
+                    inn_spillere = [navn for navn, er_paa in bytter if er_paa]
+                    ut_spillere = [navn for navn, er_paa in bytter if not er_paa]
+
+                    bytter_html = f"""
+                    <div style="position: absolute; bottom: -80px; left: 50%; transform: translateX(-50%); background-color: rgba(255,255,255,0.9); padding: 10px; border-radius: 5px; text-align: center; width: 80%;">
+                        <div style="display: flex; justify-content: center; gap: 20px; margin: 5px 0;">
+                            {f'<div style="color: green;">Inn: {", ".join(inn_spillere)}</div>' if inn_spillere else ''}
+                            {f'<div style="color: red;">Ut: {", ".join(ut_spillere)}</div>' if ut_spillere else ''}
+                        </div>
+                    </div>
+                    """
+        except Exception as e:
+            logger.error("Feil ved henting av bytter: %s", e)
 
     html = f"""
         <!DOCTYPE html>
@@ -414,6 +462,8 @@ def lag_fotballbane_html(
             <div class="fotballbane"
                  data-periode-id="{periode_id if periode_id is not None else 0}"
                  style="width: {width}px; height: {height}px;">
+                {periode_html}
+                {bytter_html}
                 <svg width="{width}" height="{height}">
                     <!-- Ytre ramme -->
                     <rect x="{margin}" y="{margin}"
@@ -1401,8 +1451,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     posisjoner=posisjoner,
                     spillere=spillere_paa_banen,
                     spillere_paa_benken=paa_benken,
-                    kamp_id=int(kamp_id),
+                    kamp_id=kamp_id,
                     periode_id=periode_id,
+                    app_handler=app_handler,
                 )
 
                 # Oppdater URL med aktiv periode når fotballbane vises
@@ -1568,6 +1619,9 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data: %s", str(e))
                 st.error("Kunne ikke håndtere banekart data")
+
+            # Fjern data fra URL uansett
+            st.query_params.pop("banekart_data", None)
 
         # Hent tilgjengelige formasjoner
         try:
