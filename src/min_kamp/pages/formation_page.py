@@ -201,7 +201,7 @@ def beregn_spiller_posisjon(
 
 def lag_fotballbane_html(
     posisjoner: Optional[List[Tuple[float, float]]] = None,
-    spillere: Optional[List[SpillerPosisjon]] = None,
+    spillere_liste: Optional[List[SpillerPosisjon]] = None,
     spillere_paa_benken: Optional[List[Dict[str, Any]]] = None,
     width: int = 1000,
     height: int = 1000,
@@ -217,8 +217,8 @@ def lag_fotballbane_html(
 
     # Generer HTML for spillerposisjonene
     spillere_html = ""
-    if spillere and posisjoner:
-        for spiller, pos in zip(spillere, posisjoner):
+    if spillere_liste and posisjoner:
+        for spiller, pos in zip(spillere_liste, posisjoner):
             if not isinstance(pos, tuple) or len(pos) != 2:
                 logger.warning(f"Ugyldig posisjon for spiller {spiller['id']}: {pos}")
                 continue
@@ -239,49 +239,48 @@ def lag_fotballbane_html(
     bytter_html = ""
     if periode_id is not None and kamp_id is not None and app_handler is not None:
         # Hent kampinnstillinger
-        kamplengde, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
-        minutter_per_periode = kamplengde // antall_perioder
+        _, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
         periode_nummer = periode_id + 1  # Konverter til 1-basert
-        periode_minutter = minutter_per_periode * periode_id
 
-        periode_html = f"""
-        <div style="position: absolute; top: 10px; left: 10px; background-color: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 5px; font-weight: bold; z-index: 1000;">
-            Periode {periode_nummer}: {periode_minutter} min
-        </div>
-        """
+        # Bygg opp spillere dictionary på samme måte som i oversikten
+        spillere: dict[str, dict[str, dict[int, bool]]] = {}
+        for p_id in range(periode_id + 1):
+            paa_banen_temp, paa_benken_temp = hent_alle_spillere_for_periode(
+                app_handler, p_id, kamp_id
+            )
+            for spiller in paa_banen_temp + paa_benken_temp:
+                if spiller["navn"] not in spillere:
+                    spillere[spiller["navn"]] = {"perioder": {}}
+                spillere[spiller["navn"]]["perioder"][p_id] = spiller in paa_banen_temp
 
-        # Hent bytter for perioden
-        try:
-            with app_handler._database_handler.connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT s.navn, b.er_paa
-                    FROM bytteplan b
-                    JOIN spillere s ON b.spiller_id = s.id
-                    WHERE b.kamp_id = ? AND b.periode = ?
-                    ORDER BY b.er_paa DESC
-                """,
-                    (kamp_id, periode_id),
-                )
+        # Hent bytter for perioden på samme måte som i oversikten
+        bytter_inn, bytter_ut = hent_bytter(spillere, periode_id)
+        bytter_tekst = formater_bytter(bytter_inn, bytter_ut)
 
-                bytter = cursor.fetchall()
-                if bytter:
-                    inn_spillere = [navn for navn, er_paa in bytter if er_paa]
-                    ut_spillere = [navn for navn, er_paa in bytter if not er_paa]
+        # Lag periode_html med bytter-info
+        periode_html = (
+            '<div style="position:absolute;top:10px;left:10px;'
+            'background-color:rgba(255,255,255,0.9);padding:5px 10px;'
+            'border-radius:5px;font-weight:bold;z-index:1000">'
+            'Periode {} (Start - Slutt)<br>'
+            'Bytter denne perioden: {}'
+            '</div>'
+        ).format(periode_nummer, bytter_tekst)
 
-                    bytter_html = f"""
-                    <div style="position: absolute; bottom: -80px; left: 50%; transform: translateX(-50%); background-color: rgba(255,255,255,0.9); padding: 10px; border-radius: 5px; text-align: center; width: 80%;">
-                        <div style="display: flex; justify-content: center; gap: 20px; margin: 5px 0;">
-                            {f'<div style="color: green;">Inn: {", ".join(inn_spillere)}</div>' if inn_spillere else ''}
-                            {f'<div style="color: red;">Ut: {", ".join(ut_spillere)}</div>' if ut_spillere else ''}
-                        </div>
-                    </div>
-                    """
-        except Exception as e:
-            logger.error("Feil ved henting av bytter: %s", e)
+        # Fjern den gamle bytter_html siden den nå er inkludert i periode_html
+        bytter_html = ""
 
-    html = f"""
+    # Pre-evaluer uttrykk
+    spiller_diameter = spiller_radius * 2
+    width_minus_margin = width - margin
+    height_minus_margin = height - 2*margin
+    height_half = height / 2
+    width_half = width / 2
+    sixteen_meter_x = (width - sixteen_meter_width) / 2
+    sixteen_meter_bottom_y = height - margin - sixteen_meter_height
+    periode_id_value = periode_id if periode_id is not None else 0
+
+    html = """
         <!DOCTYPE html>
         <html>
         <head>
@@ -297,8 +296,8 @@ def lag_fotballbane_html(
                 }}
                 .spiller {{
                     position: absolute;
-                    width: {spiller_radius*2}px;
-                    height: {spiller_radius*2}px;
+                    width: {0}px;
+                    height: {0}px;
                     background-color: white;
                     border: 3px solid #1565C0;
                     border-radius: 50%;
@@ -331,7 +330,7 @@ def lag_fotballbane_html(
                 const posisjoner = {{}};
                 const bane = document.querySelector('.fotballbane');
                 const baneRect = bane.getBoundingClientRect();
-                const margin = {margin};
+                const margin = {1};
 
                 // Beregn det spillbare området
                 const spillbartWidth = baneRect.width - 2 * margin;
@@ -378,7 +377,7 @@ def lag_fotballbane_html(
                 // Oppdater URL med data
                 const searchParams = new URLSearchParams(window.parent.location.search);
                 searchParams.set('banekart_data', JSON.stringify(data));
-                const newUrl = `${{window.parent.location.pathname}}?${{searchParams.toString()}}`;
+                const newUrl = window.parent.location.pathname + '?' + searchParams.toString();
                 window.parent.history.pushState({{}}, '', newUrl);
 
                 // Trigger en Streamlit rerun
@@ -460,44 +459,61 @@ def lag_fotballbane_html(
         </head>
         <body>
             <div class="fotballbane"
-                 data-periode-id="{periode_id if periode_id is not None else 0}"
-                 style="width: {width}px; height: {height}px;">
-                {periode_html}
-                {bytter_html}
-                <svg width="{width}" height="{height}">
+                 data-periode-id="{2}"
+                 style="width: {3}px; height: {4}px;">
+                {5}
+                {6}
+                <svg width="{3}" height="{4}">
                     <!-- Ytre ramme -->
-                    <rect x="{margin}" y="{margin}"
-                          width="{width-2*margin}" height="{height-2*margin}"
+                    <rect x="{1}" y="{1}"
+                          width="{7}" height="{8}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Midtlinje -->
-                    <line x1="{margin}" y1="{height/2}"
-                          x2="{width-margin}" y2="{height/2}"
+                    <line x1="{1}" y1="{9}"
+                          x2="{7}" y2="{9}"
                           stroke="white" stroke-width="2"/>
 
                     <!-- Midtsirkel -->
-                    <circle cx="{width/2}" cy="{height/2}" r="100"
+                    <circle cx="{10}" cy="{9}" r="100"
                             fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Øvre 16-meter -->
-                    <rect x="{(width-sixteen_meter_width)/2}"
-                          y="{margin}"
-                          width="{sixteen_meter_width}"
-                          height="{sixteen_meter_height}"
+                    <rect x="{11}"
+                          y="{1}"
+                          width="{12}"
+                          height="{13}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Nedre 16-meter -->
-                    <rect x="{(width-sixteen_meter_width)/2}"
-                          y="{height-margin-sixteen_meter_height}"
-                          width="{sixteen_meter_width}"
-                          height="{sixteen_meter_height}"
+                    <rect x="{11}"
+                          y="{14}"
+                          width="{12}"
+                          height="{13}"
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
-                {spillere_html}
+                {15}
             </div>
         </body>
         </html>
-    """
+    """.format(
+        spiller_diameter,  # 0
+        margin,  # 1
+        periode_id_value,  # 2
+        width,  # 3
+        height,  # 4
+        periode_html,  # 5
+        bytter_html,  # 6
+        width_minus_margin,  # 7
+        height_minus_margin,  # 8
+        height_half,  # 9
+        width_half,  # 10
+        sixteen_meter_x,  # 11
+        sixteen_meter_width,  # 12
+        sixteen_meter_height,  # 13
+        sixteen_meter_bottom_y,  # 14
+        spillere_html  # 15
+    )
     return html
 
 
@@ -1449,7 +1465,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
                 fotballbane = lag_fotballbane_html(
                     posisjoner=posisjoner,
-                    spillere=spillere_paa_banen,
+                    spillere_liste=spillere_paa_banen,
                     spillere_paa_benken=paa_benken,
                     kamp_id=kamp_id,
                     periode_id=periode_id,
@@ -1464,7 +1480,10 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
 
 def sett_opp_startoppstilling(app_handler: AppHandler, kamp_id: int) -> bool:
-    """Setter opp startoppstillingen (periode 0) med de første 11 spillerne i kamptroppen."""
+    """
+    Setter opp startoppstillingen (periode 0) med de første 11 spillerne 
+    i kamptroppen.
+    """
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
