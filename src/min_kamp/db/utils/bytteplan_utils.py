@@ -115,11 +115,11 @@ def hent_bytter(spillere: dict, periode_idx: int) -> Tuple[List[str], List[str]]
             # Håndter både gammel (bool) og ny (dict) struktur
             forrige_periode = spiller["perioder"].get(periode_idx - 1, False)
             denne_periode = spiller["perioder"].get(periode_idx, False)
-            
+
             # Konverter til bool hvis det er dict-struktur
             forrige = (
-                forrige_periode.get("er_paa", False) 
-                if isinstance(forrige_periode, dict) 
+                forrige_periode.get("er_paa", False)
+                if isinstance(forrige_periode, dict)
                 else forrige_periode
             )
             denne = (
