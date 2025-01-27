@@ -8,7 +8,8 @@ Støtter periodevis oversikt over spillerposisjoner og lagring av formasjoner.
 import json
 import logging
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from datetime import datetime
 
 import pdfkit
 import streamlit as st
@@ -218,16 +219,15 @@ def lag_fotballbane_html(
     # Generer HTML for spillerposisjonene
     spillere_html = ""
     if spillere_liste and posisjoner:
-        # Hent bytter for perioden
+        # Legg til mer detaljert logging for bytter
         try:
             # Lag en dictionary med spillernavn for bytter-søk
-            spillere_dict = {
-                spiller["navn"]: {
-                    "perioder": {p: False for p in range(10)},  # Støtt flere perioder
+            spillere_dict = {}
+            for spiller in spillere_liste:
+                spillere_dict[spiller["navn"]] = {
+                    "perioder": {p: {"er_paa": False, "sist_oppdatert": None} for p in range(10)},  # Støtt flere perioder
                     "id": spiller["id"],
                 }
-                for spiller in spillere_liste
-            }
 
             # Detaljert debug logging
             logger.debug("===== BYTTER DEBUG START =====")
@@ -237,10 +237,29 @@ def lag_fotballbane_html(
                 f"Spillere dict detaljer: {json.dumps(spillere_dict, indent=2)}"
             )
 
+            # Sikre at periode_id er en gyldig int
+            periode = 0 if periode_id is None else periode_id
+
             # Hent bytter med mer kontekst
-            bytter_inn, bytter_ut = hent_bytter(
-                spillere_dict, periode_id if periode_id is not None else 0
-            )
+            try:
+                # Oppdater spillere_dict med faktisk status
+                if app_handler is not None and kamp_id is not None:
+                    for p_id in range(periode + 1):
+                        paa_banen_temp, paa_benken_temp = hent_alle_spillere_for_periode(
+                            app_handler, p_id, kamp_id
+                        )
+                        for spiller in paa_banen_temp + paa_benken_temp:
+                            if spiller["navn"] in spillere_dict:
+                                spillere_dict[spiller["navn"]]["perioder"][p_id] = {
+                                    "er_paa": spiller in paa_banen_temp,
+                                    "sist_oppdatert": datetime.now().isoformat()
+                                }
+
+                bytter_inn, bytter_ut = hent_bytter(spillere_dict, periode)
+            except Exception as bytter_feil:
+                logger.error(f"Feil ved henting av bytter: {bytter_feil}")
+                bytter_inn = []
+                bytter_ut = []
 
             # Utvidet logging for bytter
             logger.debug(f"Spillere byttet inn: {bytter_inn}")
@@ -248,16 +267,18 @@ def lag_fotballbane_html(
 
             # Ekstra debugging for å forstå bytter
             for spiller in spillere_liste:
+                er_byttet_inn = spiller['navn'] in bytter_inn
                 logger.debug(
                     f"Spiller: {spiller['navn']}, "
-                    f"Byttet inn: {spiller['navn'] in bytter_inn}, "
-                    f"Byttet ut: {spiller['navn'] in bytter_ut}"
+                    f"Byttet inn: {er_byttet_inn}, "
+                    f"CSS klasse: {'byttet-inn' if er_byttet_inn else ''}"
                 )
+                st.write(f"DEBUG: Spiller {spiller['navn']} byttet inn: {er_byttet_inn}")
 
             logger.debug("===== BYTTER DEBUG SLUTT =====")
 
         except Exception as e:
-            logger.error(f"Kritisk feil ved henting av bytter: {e}")
+            logger.error(f"Kritisk feil ved håndtering av bytter: {e}")
             logger.exception("Full feilmelding:")
             bytter_inn = []
             bytter_ut = []
@@ -270,7 +291,13 @@ def lag_fotballbane_html(
             x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height, margin)
 
             # Legg til CSS-klasse for spillere som byttes inn
-            byttet_inn_klasse = "byttet-inn" if spiller["navn"] in bytter_inn else ""
+            byttet_inn_klasse = ""
+            er_paa_banen = pos[0] is not None and pos[1] is not None
+            if spiller["navn"] in bytter_inn and er_paa_banen:
+                logger.debug(f"Markerer {spiller['navn']} som byttet inn - bekreftet på banen")
+                byttet_inn_klasse = "byttet-inn"
+            elif spiller["navn"] in bytter_inn:
+                logger.warning(f"Spiller {spiller['navn']} er i bytter_inn listen men ikke på banen")
 
             spillere_html += f"""
             <div class="spiller {byttet_inn_klasse}"
@@ -291,7 +318,7 @@ def lag_fotballbane_html(
         periode_nummer = periode_id + 1  # Konverter til 1-basert
 
         # Bygg opp spillere dictionary på samme måte som i oversikten
-        spillere: dict[str, dict[str, dict[int, bool]]] = {}
+        spillere: dict[str, dict[str, Union[dict[int, dict[str, Union[bool, str]]], int]]] = {}
         for p_id in range(periode_id + 1):
             paa_banen_temp, paa_benken_temp = hent_alle_spillere_for_periode(
                 app_handler, p_id, kamp_id
@@ -299,7 +326,10 @@ def lag_fotballbane_html(
             for spiller in paa_banen_temp + paa_benken_temp:
                 if spiller["navn"] not in spillere:
                     spillere[spiller["navn"]] = {"perioder": {}}
-                spillere[spiller["navn"]]["perioder"][p_id] = spiller in paa_banen_temp
+                spillere[spiller["navn"]]["perioder"][p_id] = {
+                    "er_paa": spiller in paa_banen_temp,
+                    "sist_oppdatert": datetime.now().isoformat()
+                }
 
         # Hent bytter for perioden på samme måte som i oversikten
         bytter_inn, bytter_ut = hent_bytter(spillere, periode_id)
@@ -374,6 +404,11 @@ def lag_fotballbane_html(
                 .byttet-inn {{
                     color: red !important;
                     font-weight: bold;
+                    border: 3px solid red !important;
+                }}
+                .spiller.byttet-inn {{
+                    color: red !important;
+                    border: 3px solid red !important;
                 }}
             </style>
             <script>
@@ -764,7 +799,8 @@ def hent_alle_spillere_for_periode(
                 SELECT
                     s.id,
                     s.navn,
-                    COALESCE(ss.er_paa, 0) as er_paa
+                    COALESCE(ss.er_paa, 0) as er_paa,
+                    ss.sist_oppdatert
                 FROM spillere s
                 JOIN kamptropp kt ON s.id = kt.spiller_id AND kt.kamp_id = ?
                 LEFT JOIN SisteStatus ss ON s.id = ss.spiller_id AND ss.rn = 1
@@ -1400,6 +1436,11 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
     # Hent alle spillere og deres status for alle perioder først
     spillere = {}
     for periode in perioder:
+        logger.debug(
+            "Henter spillere for periode %d (id: %d)",
+            periode["id"] + 1,
+            periode["id"]
+        )
         paa_banen, paa_benken = hent_alle_spillere_for_periode(
             app_handler, periode["id"], kamp_id
         )
@@ -1408,14 +1449,53 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
         for spiller in paa_banen + paa_benken:
             if spiller["navn"] not in spillere:
                 spillere[spiller["navn"]] = {"perioder": {}}
-            spillere[spiller["navn"]]["perioder"][periode["id"]] = spiller in paa_banen
+            
+            # Sjekk om vi allerede har en status for denne perioden
+            periode_id = periode["id"]
+            if periode_id in spillere[spiller["navn"]]["perioder"]:
+                # Hvis vi har en nyere status, bruk den
+                if (spiller.get("sist_oppdatert") or "") > (
+                    spillere[spiller["navn"]]["perioder"][periode_id].get(
+                        "sist_oppdatert", ""
+                    )
+                ):
+                    logger.debug(
+                        "Oppdaterer status for %s i periode %d: "
+                        "er_paa=%s, sist_oppdatert=%s",
+                        spiller["navn"],
+                        periode_id,
+                        spiller in paa_banen,
+                        spiller.get("sist_oppdatert")
+                    )
+                    spillere[spiller["navn"]]["perioder"][periode_id] = {
+                        "er_paa": spiller in paa_banen,
+                        "sist_oppdatert": spiller.get("sist_oppdatert")
+                    }
+            else:
+                # Første gang vi ser denne perioden
+                logger.debug(
+                    "Setter første status for %s i periode %d: "
+                    "er_paa=%s, sist_oppdatert=%s",
+                    spiller["navn"],
+                    periode_id,
+                    spiller in paa_banen,
+                    spiller.get("sist_oppdatert")
+                )
+                spillere[spiller["navn"]]["perioder"][periode_id] = {
+                    "er_paa": spiller in paa_banen,
+                    "sist_oppdatert": spiller.get("sist_oppdatert")
+                }
 
     # Debug logging
-    logger.debug("Komplett spillerdata for alle perioder: %s", spillere)
+    logger.debug(
+        "Komplett spillerdata for alle perioder: %s",
+        json.dumps(spillere, indent=2)
+    )
 
     for periode in perioder:
         periode_tekst = (
-            f"Periode {periode['id'] + 1} " f"({periode['start']} - {periode['slutt']})"
+            f"Periode {periode['id'] + 1} "
+            f"({periode['start']} - {periode['slutt']})"
         )
         with st.expander(periode_tekst, expanded=True):
             col1, col2 = st.columns([3, 1])
@@ -1432,10 +1512,26 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     continue
 
                 # Hent og vis bytter for perioden
-                bytter_inn, bytter_ut = hent_bytter(spillere, periode_id)
-                bytter_tekst = formater_bytter(bytter_inn, bytter_ut)
-                if bytter_tekst != "-":
-                    st.info(f"Bytter denne perioden: {bytter_tekst}")
+                try:
+                    bytter_inn, bytter_ut = hent_bytter(spillere, periode_id)
+                    logger.debug(f"Periode {periode_id} - Bytter inn: {bytter_inn}")
+                    logger.debug(f"Periode {periode_id} - Bytter ut: {bytter_ut}")
+                    logger.debug(f"Periode {periode_id} - Spillere på banen: {[s['navn'] for s in paa_banen]}")
+                    
+                    # Sjekk hver spiller som skal være byttet inn
+                    for spiller_navn in bytter_inn:
+                        if any(s['navn'] == spiller_navn for s in paa_banen):
+                            logger.debug(f"Bekrefter at {spiller_navn} er på banen")
+                        else:
+                            logger.warning(f"Spiller som skulle vært byttet inn er ikke på banen: {spiller_navn}")
+                    
+                    bytter_tekst = formater_bytter(bytter_inn, bytter_ut)
+                    if bytter_tekst != "-":
+                        logger.info(f"Bytter i periode {periode_id}: {bytter_tekst}")
+                except Exception as e:
+                    logger.error(f"Feil ved håndtering av bytter: {str(e)}")
+                    bytter_inn = []
+                    bytter_ut = []
 
                 # Finn index for grunnformasjon
                 formasjon_index = 0
@@ -1658,6 +1754,7 @@ def get_bruker_id() -> int:
         st.stop()
 
 
+
 def vis_formasjon_side(app_handler: AppHandler) -> None:
     """Viser formasjonssiden."""
     try:
@@ -1736,10 +1833,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                             del st.session_state["component_value"]
                             st.rerun()
                         else:
-                            logger.error(
-                                "Kunne ikke lagre posisjoner for periode %d", periode_id
-                            )
-                            st.error("Kunne ikke lagre posisjoner")
+                            st.warning("Ingen posisjoner å lagre")
                     else:
                         st.warning("Ingen posisjoner å lagre")
             except Exception as e:

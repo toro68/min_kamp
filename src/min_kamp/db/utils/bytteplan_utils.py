@@ -8,7 +8,7 @@ Se spesielt:
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import streamlit as st
 from min_kamp.db.handlers.bytteplan_handler import BytteplanHandler
@@ -97,29 +97,37 @@ def oppdater_spilletid_summer(spilletid_handler: BytteplanHandler) -> bool:
         return False
 
 
-def hent_bytter(spillere: dict, periode_idx: int) -> tuple[list[str], list[str]]:
+def hent_bytter(spillere: dict, periode_idx: int) -> Tuple[List[str], List[str]]:
     """Henter bytter inn og ut mellom to perioder.
 
     Args:
-        spillere: Dictionary med spillerdata i formatet:
-            {
-                "spillernavn": {
-                    "perioder": {0: bool, 1: bool, ...}  # True hvis på banen
-                }
-            }
-        periode_idx: Perioden vi vil sjekke bytter for (sammenligner med forrige periode)
+        spillere: Dictionary med spillerdata
+        periode_idx: Periode å hente bytter for
 
     Returns:
-        Tuple med to lister: (bytter_inn, bytter_ut)
-        Hver liste inneholder spillernavn som strings
+        Tuple med to lister - spillere som byttes inn og ut
     """
     bytter_inn = []
     bytter_ut = []
 
     if periode_idx > 0:  # Sjekker bare bytter etter første periode
         for navn, spiller in spillere.items():
-            forrige = spiller["perioder"].get(periode_idx - 1, False)
-            denne = spiller["perioder"].get(periode_idx, False)
+            # Håndter både gammel (bool) og ny (dict) struktur
+            forrige_periode = spiller["perioder"].get(periode_idx - 1, False)
+            denne_periode = spiller["perioder"].get(periode_idx, False)
+            
+            # Konverter til bool hvis det er dict-struktur
+            forrige = (
+                forrige_periode.get("er_paa", False) 
+                if isinstance(forrige_periode, dict) 
+                else forrige_periode
+            )
+            denne = (
+                denne_periode.get("er_paa", False)
+                if isinstance(denne_periode, dict)
+                else denne_periode
+            )
+
             if not forrige and denne:  # Inn på banen
                 bytter_inn.append(navn)
             elif forrige and not denne:  # Ut av banen
