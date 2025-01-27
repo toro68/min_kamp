@@ -8,12 +8,20 @@ def configure_logging() -> None:
     """Configure logging for the application."""
     # Get log level from environment variable
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_file = os.getenv("LOG_FILE", "logs/app.log")
 
-    # Configure logging
+    # Ensure log directory exists
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+    # Configure logging with file handler
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)s [%(levelname)s] %(message)s",
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(),  # Keep console output
+        ],
     )
 
     # Set log level for specific loggers

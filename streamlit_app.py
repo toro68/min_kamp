@@ -17,9 +17,7 @@ project_root = str(Path(__file__).parent)
 src_path = os.path.join(project_root, "src")
 sys.path.insert(0, src_path)
 
-# NOTE: Følgende importer må være etter sys.path.insert()
-# for å kunne finne min_kamp-pakken
-# pylint: disable=wrong-import-position
+from min_kamp.config.logging_config import configure_logging
 from min_kamp.db.auth.auth_views import check_auth, vis_login_side
 from min_kamp.db.db_config import get_db_path
 from min_kamp.db.db_handler import DatabaseHandler
@@ -32,10 +30,8 @@ from min_kamp.pages.kamp_page import vis_kamp_side
 from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.oppsett_page import vis_oppsett_side
 
-# pylint: enable=wrong-import-position
-
 # Debug-informasjon
-logging.basicConfig(level=logging.DEBUG)
+configure_logging()
 logging.debug("=== System Info ===")
 logging.debug(f"Platform: {platform.platform()}")
 logging.debug(f"Python version: {sys.version}")

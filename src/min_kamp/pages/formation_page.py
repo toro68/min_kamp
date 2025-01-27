@@ -218,14 +218,62 @@ def lag_fotballbane_html(
     # Generer HTML for spillerposisjonene
     spillere_html = ""
     if spillere_liste and posisjoner:
+        # Hent bytter for perioden
+        try:
+            # Lag en dictionary med spillernavn for bytter-søk
+            spillere_dict = {
+                spiller["navn"]: {
+                    "perioder": {p: False for p in range(10)},  # Støtt flere perioder
+                    "id": spiller["id"],
+                }
+                for spiller in spillere_liste
+            }
+
+            # Detaljert debug logging
+            logger.debug("===== BYTTER DEBUG START =====")
+            logger.debug(f"Periode som søkes: {periode_id}")
+            logger.debug(f"Spillere som søkes: {list(spillere_dict.keys())}")
+            logger.debug(
+                f"Spillere dict detaljer: {json.dumps(spillere_dict, indent=2)}"
+            )
+
+            # Hent bytter med mer kontekst
+            bytter_inn, bytter_ut = hent_bytter(
+                spillere_dict, periode_id if periode_id is not None else 0
+            )
+
+            # Utvidet logging for bytter
+            logger.debug(f"Spillere byttet inn: {bytter_inn}")
+            logger.debug(f"Spillere byttet ut: {bytter_ut}")
+
+            # Ekstra debugging for å forstå bytter
+            for spiller in spillere_liste:
+                logger.debug(
+                    f"Spiller: {spiller['navn']}, "
+                    f"Byttet inn: {spiller['navn'] in bytter_inn}, "
+                    f"Byttet ut: {spiller['navn'] in bytter_ut}"
+                )
+
+            logger.debug("===== BYTTER DEBUG SLUTT =====")
+
+        except Exception as e:
+            logger.error(f"Kritisk feil ved henting av bytter: {e}")
+            logger.exception("Full feilmelding:")
+            bytter_inn = []
+            bytter_ut = []
+
         for spiller, pos in zip(spillere_liste, posisjoner):
             if not isinstance(pos, tuple) or len(pos) != 2:
                 logger.warning(f"Ugyldig posisjon for spiller {spiller['id']}: {pos}")
                 continue
 
             x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height, margin)
+
+            # Legg til CSS-klasse for spillere som byttes inn
+            byttet_inn_klasse = "byttet-inn" if spiller["navn"] in bytter_inn else ""
+
             spillere_html += f"""
-            <div class="spiller"
+            <div class="spiller {byttet_inn_klasse}"
                  id="spiller_{spiller['id']}"
                  data-spiller-id="{spiller['id']}"
                  style="left: {x-spiller_radius}px;
@@ -260,11 +308,11 @@ def lag_fotballbane_html(
         # Lag periode_html med bytter-info
         periode_html = (
             '<div style="position:absolute;top:10px;left:10px;'
-            'background-color:rgba(255,255,255,0.9);padding:5px 10px;'
+            "background-color:rgba(255,255,255,0.9);padding:5px 10px;"
             'border-radius:5px;font-weight:bold;z-index:1000">'
-            'Periode {} (Start - Slutt)<br>'
-            'Bytter denne perioden: {}'
-            '</div>'
+            "Periode {} (Start - Slutt)<br>"
+            "Bytter denne perioden: {}"
+            "</div>"
         ).format(periode_nummer, bytter_tekst)
 
         # Fjern den gamle bytter_html siden den nå er inkludert i periode_html
@@ -273,7 +321,7 @@ def lag_fotballbane_html(
     # Pre-evaluer uttrykk
     spiller_diameter = spiller_radius * 2
     width_minus_margin = width - margin
-    height_minus_margin = height - 2*margin
+    height_minus_margin = height - 2 * margin
     height_half = height / 2
     width_half = width / 2
     sixteen_meter_x = (width - sixteen_meter_width) / 2
@@ -322,6 +370,10 @@ def lag_fotballbane_html(
                     transform: scale(1.1);
                     box-shadow: 0 8px 16px rgba(0,0,0,0.4);
                     pointer-events: none;
+                }}
+                .byttet-inn {{
+                    color: red !important;
+                    font-weight: bold;
                 }}
             </style>
             <script>
@@ -512,7 +564,7 @@ def lag_fotballbane_html(
         sixteen_meter_width,  # 12
         sixteen_meter_height,  # 13
         sixteen_meter_bottom_y,  # 14
-        spillere_html  # 15
+        spillere_html,  # 15
     )
     return html
 
@@ -1080,31 +1132,89 @@ def _hent_kampinnstillinger(
 
             # Hent innstillinger fra databasen
             sql = """
-                SELECT nokkel, verdi
+                SELECT nokkel, verdi, kamp_id, bruker_id, sist_oppdatert
                 FROM app_innstillinger
                 WHERE (bruker_id = ? OR kamp_id = ?)
-                AND nokkel IN (
-                    'kamplengde',
-                    'antall_perioder',
-                    'antall_paa_banen'
-                )
-                ORDER BY kamp_id DESC
+                AND nokkel IN ('kamplengde', 'antall_perioder', 'antall_paa_banen')
+                ORDER BY
+                    CASE
+                        WHEN kamp_id = ? THEN 1
+                        WHEN bruker_id = ? THEN 2
+                        ELSE 3
+                    END,
+                    sist_oppdatert DESC
             """
-            cursor.execute(sql, (bruker_id, kamp_id))
+            cursor.execute(sql, (bruker_id, kamp_id, kamp_id, bruker_id))
 
-            # Konverter resultater til dict
-            innstillinger = {}
-            for row in cursor.fetchall():
-                innstillinger[row[0]] = row[1]
+            # Prioriterte innstillinger
+            innstillinger = {
+                "kamplengde": 70,
+                "antall_perioder": 7,
+                "antall_paa_banen": 7,
+            }
 
-            # Hent verdier med standardverdier
-            kamplengde = int(innstillinger.get("kamplengde", 70))
-            antall_perioder = int(innstillinger.get("antall_perioder", 7))
-            antall_paa_banen = int(innstillinger.get("antall_paa_banen", 7))
+            # Detaljert logging av alle resultater
+            logger.debug("DEBUG: Alle innstillinger funnet:")
+            for rad in cursor.fetchall():
+                nokkel, verdi, rad_kamp_id, rad_bruker_id, sist_oppdatert = rad
+                logger.debug(
+                    "DEBUG: Rad - Nokkel: %s, Verdi: %s, Kamp ID: %s, "
+                    "Bruker ID: %s, Sist oppdatert: %s",
+                    nokkel,
+                    verdi,
+                    rad_kamp_id,
+                    rad_bruker_id,
+                    sist_oppdatert,
+                )
+
+            # Kjør spørringen på nytt for å kunne iterere
+            cursor.execute(sql, (bruker_id, kamp_id, kamp_id, bruker_id))
+
+            # Gjennomgå resultater med prioritet
+            for (
+                nokkel,
+                verdi,
+                rad_kamp_id,
+                rad_bruker_id,
+                sist_oppdatert,
+            ) in cursor.fetchall():
+                logger.debug(
+                    "DEBUG: Vurderer innstilling - Nokkel: %s, Verdi: %s, "
+                    "Gjeldende kamp_id: %s, Rad kamp_id: %s, Rad bruker_id: %s",
+                    nokkel,
+                    verdi,
+                    kamp_id,
+                    rad_kamp_id,
+                    rad_bruker_id,
+                )
+
+                # Prioriter kamp-spesifikke innstillinger
+                if rad_kamp_id == kamp_id:
+                    innstillinger[nokkel] = verdi
+                    logger.debug(
+                        f"DEBUG: Valgt kamp-spesifikk innstilling: {nokkel} = {verdi}"
+                    )
+
+                # Deretter bruker-spesifikke
+                elif rad_bruker_id == bruker_id and nokkel not in innstillinger:
+                    innstillinger[nokkel] = verdi
+                    logger.debug(
+                        f"DEBUG: Valgt bruker-spesifikk innstilling: {nokkel} = {verdi}"
+                    )
+
+            # Logg alle innhentede innstillinger
+            logger.debug(
+                f"DEBUG: Endelige innstillinger for kamp {kamp_id}: {innstillinger}"
+            )
+
+            # Hent verdier med prioritet
+            kamplengde = int(innstillinger["kamplengde"])
+            antall_perioder = int(innstillinger["antall_perioder"])
+            antall_paa_banen = int(innstillinger["antall_paa_banen"])
 
             # Logg innstillingene
             logger.info(
-                "Kampinnstillinger for kamp %d: " "lengde=%d, perioder=%d, spillere=%d",
+                "Kampinnstillinger for kamp %s: lengde=%s, " "perioder=%s, spillere=%s",
                 kamp_id,
                 kamplengde,
                 antall_perioder,
@@ -1113,7 +1223,7 @@ def _hent_kampinnstillinger(
             return kamplengde, antall_perioder, antall_paa_banen
 
     except Exception as e:
-        logger.error("Feil ved henting av kampinnstillinger: %s", str(e))
+        logger.error(f"Feil ved henting av kampinnstillinger: {str(e)}")
         logger.exception("Full feilmelding:")
         return 70, 7, 7
 
@@ -1126,7 +1236,7 @@ def hent_bytter_for_periode(
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
 
-            # Først hent alle endringer i perioden
+            # Hent alle endringer i perioden
             cursor.execute(
                 """
                 WITH EndringerIPeriode AS (
@@ -1142,13 +1252,13 @@ def hent_bytter_for_periode(
                     WHERE kamp_id = ? AND periode = ?
                     ORDER BY sist_oppdatert
                 )
-                SELECT
-                    s.navn,
-                    e.er_paa,
-                    e.sist_oppdatert
+                SELECT s.navn, e.er_paa, e.sist_oppdatert
                 FROM EndringerIPeriode e
                 JOIN spillere s ON e.spiller_id = s.id
-                WHERE (e.er_paa != e.forrige_status OR e.forrige_status IS NULL)
+                WHERE (
+                    e.er_paa != e.forrige_status
+                    OR e.forrige_status IS NULL
+                )
                 ORDER BY e.sist_oppdatert
             """,
                 (kamp_id, periode_id),
@@ -1159,8 +1269,7 @@ def hent_bytter_for_periode(
 
             # Grupper endringer i inn/ut par
             for i in range(0, len(endringer), 2):
-                ut = None
-                inn = None
+                ut, inn = None, None
 
                 # Finn ut og inn par
                 for j in range(i, min(i + 2, len(endringer))):
@@ -1249,8 +1358,8 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
         }
         .spiller {
             position: absolute;
-            width: 80px;
-            height: 80px;
+            width: 100px;
+            height: 100px;
             background-color: white;
             border: 3px solid #1565C0;
             border-radius: 50%;
@@ -1259,7 +1368,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
             justify-content: center;
             cursor: grab;
             user-select: none;
-            font-size: 16px;
+            font-size: 24px;
             font-weight: bold;
             z-index: 1000;
         }
@@ -1406,9 +1515,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                         st.query_params.pop("banekart_data", None)
                                         st.rerun()
                                     else:
-                                        st.error("Kunne ikke lagre posisjoner")
-                                else:
-                                    st.warning("Ingen posisjoner å lagre")
+                                        st.warning("Ingen posisjoner å lagre")
                             except ValueError as e:
                                 logger.error("Ugyldig periode_id: %s", str(e))
                                 st.error("Ugyldig periode ID")
@@ -1481,7 +1588,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
 def sett_opp_startoppstilling(app_handler: AppHandler, kamp_id: int) -> bool:
     """
-    Setter opp startoppstillingen (periode 0) med de første 11 spillerne 
+    Setter opp startoppstillingen (periode 0) med de første 11 spillerne
     i kamptroppen.
     """
     try:
@@ -1634,7 +1741,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                             )
                             st.error("Kunne ikke lagre posisjoner")
                     else:
-                        logger.warning("Ingen posisjoner å lagre")
+                        st.warning("Ingen posisjoner å lagre")
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data: %s", str(e))
                 st.error("Kunne ikke håndtere banekart data")
@@ -1962,7 +2069,7 @@ def hent_banekart(
             return posisjoner
 
     except Exception as e:
-        logger.error("Feil ved henting av banekart: %s", str(e))
+        logger.error("Feil ved henting av banekart: %s", e)
         logger.error("Exception type: %s", type(e).__name__)
         logger.exception("Full feilmelding:")
         logger.debug("=== Slutt hent_banekart (feilet) ===")
