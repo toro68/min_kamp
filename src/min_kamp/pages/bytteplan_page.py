@@ -59,8 +59,8 @@ def _hent_kampinnstillinger(
             'antall_perioder',
             'antall_paa_banen'
         )
-        ORDER BY 
-            CASE 
+        ORDER BY
+            CASE
                 WHEN kamp_id = ? THEN 1
                 WHEN bruker_id = ? THEN 2
                 ELSE 3
@@ -70,11 +70,13 @@ def _hent_kampinnstillinger(
         innstillinger = db_handler.execute_query(
             query, (bruker_id, kamp_id, kamp_id, bruker_id)
         )
-        
+
         # Detaljert logging av alle innhentede innstillinger
         logger.debug(
-            "Hentet innstillinger for kamp %d, bruker %d: %s", 
-            kamp_id, bruker_id, innstillinger
+            "Hentet innstillinger for kamp %d, bruker %d: %s",
+            kamp_id,
+            bruker_id,
+            innstillinger,
         )
 
         # Definer standard verdier
@@ -89,14 +91,11 @@ def _hent_kampinnstillinger(
         for row in innstillinger:
             nokkel = row["nokkel"]
             verdi = row["verdi"]
-            
+
             # Kun oppdater hvis nøkkelen ikke allerede er satt
             if nokkel not in innstillinger_dict:
                 innstillinger_dict[nokkel] = verdi
-                logger.debug(
-                    "Valgt innstilling: nokkel=%s, verdi=%s", 
-                    nokkel, verdi
-                )
+                logger.debug("Valgt innstilling: nokkel=%s, verdi=%s", nokkel, verdi)
 
         # Oppdater verdier fra databasen
         if "kamplengde" in innstillinger_dict:
@@ -108,12 +107,17 @@ def _hent_kampinnstillinger(
 
         logger.debug(
             "Endelige innstillinger: kamplengde=%d, perioder=%d, spillere=%d",
-            kamplengde, antall_perioder, antall_paa_banen
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
         )
 
         logger.info(
             "Kampinnstillinger for kamp %d: lengde=%d, perioder=%d, spillere=%d",
-            kamp_id, kamplengde, antall_perioder, antall_paa_banen
+            kamp_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
         )
         return kamplengde, antall_perioder, antall_paa_banen
     except Exception as e:
@@ -136,13 +140,17 @@ def _lagre_kampinnstillinger(
 
         # Detaljert logging med stack trace
         import traceback
+
         logger.debug(
             "Starter lagring av kampinnstillinger: "
             "kamp_id=%d, bruker_id=%d, kamplengde=%d, "
             "antall_perioder=%d, antall_paa_banen=%d\n%s",
-            kamp_id, bruker_id, kamplengde, 
-            antall_perioder, antall_paa_banen,
-            traceback.format_stack()
+            kamp_id,
+            bruker_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
+            traceback.format_stack(),
         )
 
         # Slett eventuelle eksisterende innstillinger for denne kampen
@@ -528,7 +536,9 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
         logger.warning(
             "DEBUG: Opprinnelige innstillinger - "
             "kamplengde=%d, antall_perioder=%d, antall_paa_banen=%d",
-            kamplengde, antall_perioder, antall_paa_banen
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
         )
 
         # Kampinnstillinger
@@ -552,7 +562,9 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
         logger.warning(
             "DEBUG: Nye innstillinger før lagring - "
             "ny_kamplengde=%d, nytt_antall_perioder=%d, nytt_antall_paa_banen=%d",
-            ny_kamplengde, nytt_antall_perioder, nytt_antall_paa_banen
+            ny_kamplengde,
+            nytt_antall_perioder,
+            nytt_antall_paa_banen,
         )
 
         if st.button("Lagre innstillinger"):
@@ -561,10 +573,13 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
                 "DEBUG: Lagrer innstillinger - "
                 "kamp_id=%d, bruker_id=%d, ny_kamplengde=%d, "
                 "nytt_antall_perioder=%d, nytt_antall_paa_banen=%d",
-                kamp_id, bruker_id, ny_kamplengde, 
-                nytt_antall_perioder, nytt_antall_paa_banen
+                kamp_id,
+                bruker_id,
+                ny_kamplengde,
+                nytt_antall_perioder,
+                nytt_antall_paa_banen,
             )
-            
+
             _lagre_kampinnstillinger(
                 app_handler,
                 bruker_id,
