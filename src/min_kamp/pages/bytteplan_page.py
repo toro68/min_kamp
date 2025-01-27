@@ -51,7 +51,7 @@ def _hent_kampinnstillinger(
     try:
         db_handler = cast(DatabaseHandler, app_handler._database_handler)
         query = """
-        SELECT nokkel, verdi
+        SELECT nokkel, verdi, kamp_id
         FROM app_innstillinger
         WHERE (bruker_id = ? OR kamp_id = ?)
         AND nokkel IN (
@@ -59,29 +59,61 @@ def _hent_kampinnstillinger(
             'antall_perioder',
             'antall_paa_banen'
         )
-        ORDER BY kamp_id DESC  -- Kampspesifikke innstillinger har prioritet
+        ORDER BY 
+            CASE 
+                WHEN kamp_id = ? THEN 1
+                WHEN bruker_id = ? THEN 2
+                ELSE 3
+            END,
+            sist_oppdatert DESC
         """
-        innstillinger = db_handler.execute_query(query, (bruker_id, kamp_id))
-        logger.debug("Hentet innstillinger: %s", innstillinger)
+        innstillinger = db_handler.execute_query(
+            query, (bruker_id, kamp_id, kamp_id, bruker_id)
+        )
+        
+        # Detaljert logging av alle innhentede innstillinger
+        logger.debug(
+            "Hentet innstillinger for kamp %d, bruker %d: %s", 
+            kamp_id, bruker_id, innstillinger
+        )
 
+        # Definer standard verdier
         kamplengde = 70  # Standard 70 minutter
         antall_perioder = 7  # Standard 7 perioder (10 min hver)
         antall_paa_banen = 7  # Standard 7 spillere på banen
 
+        # Lag en dictionary for å holde styr på innstillinger
+        innstillinger_dict = {}
+
+        # Behandle innstillinger med prioritet
         for row in innstillinger:
-            if row["nokkel"] == "kamplengde":
-                kamplengde = int(row["verdi"])
-            elif row["nokkel"] == "antall_perioder":
-                antall_perioder = int(row["verdi"])
-            elif row["nokkel"] == "antall_paa_banen":
-                antall_paa_banen = int(row["verdi"])
+            nokkel = row["nokkel"]
+            verdi = row["verdi"]
+            
+            # Kun oppdater hvis nøkkelen ikke allerede er satt
+            if nokkel not in innstillinger_dict:
+                innstillinger_dict[nokkel] = verdi
+                logger.debug(
+                    "Valgt innstilling: nokkel=%s, verdi=%s", 
+                    nokkel, verdi
+                )
+
+        # Oppdater verdier fra databasen
+        if "kamplengde" in innstillinger_dict:
+            kamplengde = int(innstillinger_dict["kamplengde"])
+        if "antall_perioder" in innstillinger_dict:
+            antall_perioder = int(innstillinger_dict["antall_perioder"])
+        if "antall_paa_banen" in innstillinger_dict:
+            antall_paa_banen = int(innstillinger_dict["antall_paa_banen"])
+
+        logger.debug(
+            "Endelige innstillinger: kamplengde=%d, perioder=%d, spillere=%d",
+            kamplengde, antall_perioder, antall_paa_banen
+        )
 
         logger.info(
             "Kampinnstillinger for kamp %d: lengde=%d, perioder=%d, spillere=%d",
-            kamp_id,
-            kamplengde,
-            antall_perioder,
-            antall_paa_banen,
+            kamp_id, kamplengde, antall_perioder, antall_paa_banen
         )
         return kamplengde, antall_perioder, antall_paa_banen
     except Exception as e:
@@ -101,6 +133,17 @@ def _lagre_kampinnstillinger(
     """Lagrer kampinnstillinger i databasen."""
     try:
         db_handler = cast(DatabaseHandler, app_handler._database_handler)
+
+        # Detaljert logging med stack trace
+        import traceback
+        logger.debug(
+            "Starter lagring av kampinnstillinger: "
+            "kamp_id=%d, bruker_id=%d, kamplengde=%d, "
+            "antall_perioder=%d, antall_paa_banen=%d\n%s",
+            kamp_id, bruker_id, kamplengde, 
+            antall_perioder, antall_paa_banen,
+            traceback.format_stack()
+        )
 
         # Slett eventuelle eksisterende innstillinger for denne kampen
         delete_query = """
@@ -481,6 +524,13 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
             app_handler, bruker_id, kamp_id
         )
 
+        # DEBUGGING: Legg til detaljert logging
+        logger.warning(
+            "DEBUG: Opprinnelige innstillinger - "
+            "kamplengde=%d, antall_perioder=%d, antall_paa_banen=%d",
+            kamplengde, antall_perioder, antall_paa_banen
+        )
+
         # Kampinnstillinger
         st.subheader("Kampinnstillinger")
 
@@ -498,7 +548,23 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
                 "Antall spillere på banen", min_value=1, value=antall_paa_banen
             )
 
+        # DEBUGGING: Legg til detaljert logging
+        logger.warning(
+            "DEBUG: Nye innstillinger før lagring - "
+            "ny_kamplengde=%d, nytt_antall_perioder=%d, nytt_antall_paa_banen=%d",
+            ny_kamplengde, nytt_antall_perioder, nytt_antall_paa_banen
+        )
+
         if st.button("Lagre innstillinger"):
+            # DEBUGGING: Legg til detaljert logging
+            logger.warning(
+                "DEBUG: Lagrer innstillinger - "
+                "kamp_id=%d, bruker_id=%d, ny_kamplengde=%d, "
+                "nytt_antall_perioder=%d, nytt_antall_paa_banen=%d",
+                kamp_id, bruker_id, ny_kamplengde, 
+                nytt_antall_perioder, nytt_antall_paa_banen
+            )
+            
             _lagre_kampinnstillinger(
                 app_handler,
                 bruker_id,
