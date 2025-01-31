@@ -9,9 +9,8 @@ import json
 import logging
 import tempfile
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
-import pdfkit
 import streamlit as st
 import streamlit.components.v1 as components
 from min_kamp.db.auth.auth_views import check_auth
@@ -22,24 +21,19 @@ logger = logging.getLogger(__name__)
 
 POSISJONER = ["Keeper", "Forsvar", "Midtbane", "Angrep"]
 
+# Prøv å importere pdfkit, men fortsett uten hvis det ikke er tilgjengelig
+HAS_PDFKIT = False
 try:
+    import pdfkit
+
     # Sjekk om wkhtmltopdf er tilgjengelig
     options = {"quiet": ""}
     test_html = "<html><body>Test</body></html>"
     pdfkit.from_string(test_html, None, options=options)
     HAS_PDFKIT = True
-except ImportError:
-    HAS_PDFKIT = False
-    logger.warning("pdfkit er ikke installert. " "Installer med: pip install pdfkit")
-except OSError:
-    HAS_PDFKIT = False
-    logger.warning(
-        "wkhtmltopdf er ikke installert eller ikke funnet i PATH. "
-        "Installer wkhtmltopdf fra: https://wkhtmltopdf.org/downloads.html"
-    )
-except Exception as e:
-    HAS_PDFKIT = False
-    logger.warning("Kunne ikke initialisere PDF-støtte: %s", str(e))
+except (ImportError, OSError, Exception) as e:
+    logger.warning("PDF-støtte er ikke tilgjengelig: %s", str(e))
+    logger.warning("For PDF-støtte, installer pdfkit og wkhtmltopdf")
 
 logger = logging.getLogger(__name__)
 
