@@ -97,12 +97,19 @@ def slett_spiller_fra_kamptropp(
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
+            logger.debug(
+                "Kaller slett_spiller_fra_kamptropp med kamp_id=%s, spiller_id=%s",
+                kamp_id,
+                spiller_id,
+            )
             # Oppdaterer spillerens status til inaktiv (er_med = 0)
             cursor.execute(
                 "UPDATE kamptropp SET er_med = 0 "
                 "WHERE kamp_id = ? AND spiller_id = ?",
                 (kamp_id, spiller_id),
             )
+            rows = cursor.rowcount
+            logger.debug("Antall oppdaterte rader: %s", rows)
             conn.commit()
 
         logger.info(
