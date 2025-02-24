@@ -129,6 +129,48 @@ def slett_spiller_fra_kamptropp(
         )
 
 
+def slett_spiller_helt(
+    app_handler: AppHandler,
+    kamp_id: int,
+    spiller_id: int,
+) -> bool:
+    """Sletter en spiller helt fra kamptroppen.
+
+    Args:
+        app_handler: AppHandler instans
+        kamp_id: ID til aktiv kamp
+        spiller_id: ID til spilleren som skal slettes
+
+    Returns:
+        bool: True hvis sletting var vellykket, False ellers
+    """
+    try:
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+            # Slett spilleren fra kamptroppen
+            cursor.execute(
+                "DELETE FROM kamptropp "
+                "WHERE kamp_id = ? AND spiller_id = ?",
+                (kamp_id, spiller_id)
+            )
+            conn.commit()
+            
+            logger.info(
+                "Spiller %s slettet helt fra kamp %s", 
+                spiller_id, 
+                kamp_id
+            )
+        return True
+    except Exception as e:
+        logger.error(
+            "Feil ved sletting av spiller %s fra kamp %s: %s", 
+            spiller_id, 
+            kamp_id, 
+            e
+        )
+        return False
+
+
 def vis_spillere(
     kamptropp: Dict[str, Any],
     posisjon: str,
@@ -151,14 +193,19 @@ def vis_spillere(
         st.write(f"### {posisjon}")
 
         # Legg til en "Velg alle" checkbox for hver posisjon
-        velg_alle = st.checkbox(f"Velg alle {posisjon}", key=f"velg_alle_{posisjon}")
+        velg_alle = st.checkbox(
+            f"Velg alle {posisjon}", 
+            key=f"velg_alle_{posisjon}"
+        )
 
         # Vis hver spiller med en checkbox for aktiv status (avhukingsboks)
         for spiller in spillere:
             is_active = bool(int(spiller["er_med"]))
-            col_name, col_checkbox = st.columns([3, 1])
+            col_name, col_checkbox, col_slett = st.columns([3, 1, 1])
+            
             with col_name:
                 st.write(spiller["navn"])
+            
             with col_checkbox:
                 # Bruk velg_alle til å sette checkbox-verdien
                 nye_verdi = st.checkbox(
@@ -171,7 +218,9 @@ def vis_spillere(
                 if nye_verdi != is_active:
                     if not nye_verdi:
                         # Fjern spiller fra kamptropp
-                        slett_spiller_fra_kamptropp(app_handler, kamp_id, spiller["id"])
+                        slett_spiller_fra_kamptropp(
+                            app_handler, kamp_id, spiller["id"]
+                        )
                         st.success(f"{spiller['navn']} fjernet")
                     else:
                         # Legg til spiller i kamptropp (hvis ikke allerede med)
@@ -191,6 +240,31 @@ def vis_spillere(
                     
                     # Oppdater siden
                     st.rerun()
+            
+            # Legg til slett-knapp
+            with col_slett:
+                if st.button(
+                    "Slett", 
+                    key=f"slett_{spiller['id']}", 
+                    help="Fjern spilleren helt fra troppen"
+                ):
+                    # Bekreftelsesdialog
+                    if st.checkbox(
+                        f"Bekreft sletting av {spiller['navn']}", 
+                        key=f"bekreft_slett_{spiller['id']}"
+                    ):
+                        # Forsøk å slette spilleren helt
+                        if slett_spiller_helt(
+                            app_handler, kamp_id, spiller["id"]
+                        ):
+                            st.success(
+                                f"{spiller['navn']} er slettet fra troppen"
+                            )
+                            st.rerun()
+                        else:
+                            st.error(
+                                f"Kunne ikke slette {spiller['navn']}"
+                            )
 
     except Exception as e:
         logger.error(
