@@ -82,7 +82,11 @@ def opprett_spiller(
         return None
 
 
-def slett_spiller_fra_kamptropp(app_handler: AppHandler, kamp_id: int, spiller_id: int) -> None:
+def slett_spiller_fra_kamptropp(
+    app_handler: AppHandler,
+    kamp_id: int,
+    spiller_id: int,
+) -> None:
     """Sletter en spiller fra kamptroppen.
 
     Args:
@@ -119,7 +123,10 @@ def slett_spiller_fra_kamptropp(app_handler: AppHandler, kamp_id: int, spiller_i
 
 
 def vis_spillere(
-    kamptropp: Dict[str, Any], posisjon: str, app_handler: AppHandler, kamp_id: int
+    kamptropp: Dict[str, Any],
+    posisjon: str,
+    app_handler: AppHandler,
+    kamp_id: int,
 ) -> None:
     """Viser spillere for en posisjon.
 
@@ -130,47 +137,38 @@ def vis_spillere(
         kamp_id: ID til aktiv kamp
     """
     try:
-        spillere = kamptropp["spillere"][posisjon]
-        if not spillere:
+        # Filtrer kun aktive spillere
+        active_spillere = [
+            s
+            for s in kamptropp["spillere"][posisjon]
+            if s["er_med"]
+        ]
+        if not active_spillere:
             return
 
         st.write(f"### {posisjon}")
 
-        # Vis spillere i en tabell
-        cols = st.columns(4)
-        for i, spiller in enumerate(spillere):
-            col = cols[i % 4]
-            with col:
-                if st.checkbox(
-                    spiller["navn"],
-                    value=spiller["er_med"],
-                    key=f"spiller_{spiller['id']}",
+        # Vis hver aktiv spiller med navn og en 'Fjern'-knapp
+        for spiller in active_spillere:
+            col_name, col_action = st.columns([3, 1])
+            with col_name:
+                st.write(spiller["navn"])
+            with col_action:
+                if st.button(
+                    "Fjern",
+                    key=f"fjern_{spiller['id']}",
                 ):
-                    # Spiller er valgt - oppdater i database
-                    if not spiller["er_med"]:
-                        app_handler.kamp_handler.oppdater_spiller_status(
-                            kamp_id=kamp_id,
-                            spiller_id=spiller["id"],
-                            er_med=True,
-                        )
-                        st.rerun()
-                else:
-                    # Spiller er ikke valgt - oppdater i database
-                    if spiller["er_med"]:
-                        app_handler.kamp_handler.oppdater_spiller_status(
-                            kamp_id=kamp_id,
-                            spiller_id=spiller["id"],
-                            er_med=False,
-                        )
-                        st.rerun()
-                # Legg til en knapp for å slette spilleren
-                if st.button("Slett", key=f"slett_{spiller['id']}"):
                     slett_spiller_fra_kamptropp(app_handler, kamp_id, spiller["id"])
-                    st.success(f"{spiller['navn']} slettet")
+                    st.success(
+                        f"{spiller['navn']} fjernet"
+                    )
                     st.rerun()
-
     except Exception as e:
-        logger.error("Feil ved visning av spillere for %s: %s", posisjon, e)
+        logger.error(
+            "Feil ved visning av spillere for %s: %s",
+            posisjon,
+            e,
+        )
 
 
 def vis_valgt_tropp(kamptropp: Dict[str, Any], valgte_spillere: Set[int]) -> None:
