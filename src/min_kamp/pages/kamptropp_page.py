@@ -82,9 +82,7 @@ def opprett_spiller(
         return None
 
 
-def slett_spiller_fra_kamptropp(
-    app_handler: AppHandler, kamp_id: int, spiller_id: int
-) -> None:
+def slett_spiller_fra_kamptropp(app_handler: AppHandler, kamp_id: int, spiller_id: int) -> None:
     """Sletter en spiller fra kamptroppen.
 
     Args:
@@ -95,20 +93,29 @@ def slett_spiller_fra_kamptropp(
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
+            # Oppdaterer spillerens status til inaktiv (er_med = 0)
             cursor.execute(
-                "DELETE FROM kamptropp WHERE kamp_id = ? AND spiller_id = ?",
+                "UPDATE kamptropp SET er_med = 0 "
+                "WHERE kamp_id = ? AND spiller_id = ?",
                 (kamp_id, spiller_id),
             )
             conn.commit()
-        logger.info("Slettet spiller %s fra kamp %s", spiller_id, kamp_id)
+
+        logger.info(
+            "Sett spiller %s som inaktiv for kamp %s",
+            spiller_id,
+            kamp_id,
+        )
     except Exception as e:
         logger.error(
-            "Feil ved sletting av spiller %s fra kamp %s: %s",
+            "Feil ved oppdatering av spiller %s til inaktiv for kamp %s: %s",
             spiller_id,
             kamp_id,
             e,
         )
-        st.error(f"Kunne ikke slette spiller med ID {spiller_id}")
+        st.error(
+            f"Kunne ikke sette spiller inaktiv med ID {spiller_id}"
+        )
 
 
 def vis_spillere(
