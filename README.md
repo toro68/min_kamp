@@ -1,86 +1,55 @@
 # Min Kamp
 
-En Streamlit-applikasjon for håndtering av kamper og spillere.
+## Prosjektoppsett
 
-## Beskrivelse
-
-Min Kamp er et system for å:
-- Administrere kamper og spilletid
-- Håndtere spillerdata
-- Generere bytteplaner
-- Analysere kampstatistikk
-
-## Teknisk Stack
-
+### Forutsetninger
 - Python 3.9+
-- Streamlit
-- SQLAlchemy (database)
-- Pandas (dataanalyse)
-- JWT (autentisering)
+- pip
+- virtualenv (valgfritt, men anbefalt)
 
-## Installasjon
+### Installasjon
 
-1. Klon repositoriet:
+1. Klone repository:
 ```bash
-git clone [repo-url]
+git clone https://github.com/toro68/min_kamp.git
 cd min_kamp
 ```
 
-2. Opprett og aktiver virtuelt miljø:
+2. Opprett virtuelt miljø (valgfritt, men anbefalt):
 ```bash
-python -m venv venv
-source venv/bin/activate  # På Windows: venv\Scripts\activate
+python3 -m venv venv
+source venv/bin/activate  # På macOS/Linux
+# eller
+venv\Scripts\activate  # På Windows
 ```
 
-3. Installer avhengigheter:
+3. Installer prosjektet:
 ```bash
-pip install -e .  # Installerer pakken i utviklingsmodus
-pip install -r requirements-dev.txt  # Installerer utviklingsavhengigheter
+pip install -e .
 ```
 
-4. Sett opp miljøvariabler:
+### Kjøre Appen
+
 ```bash
-cp .env.example .env
-# Rediger .env med dine innstillinger
-```
-
-## Kjøring
-
-Start applikasjonen:
-```bash
-streamlit run streamlit_app.py
-```
-
-## Prosjektstruktur
-
-```
-min_kamp/
-├── src/              # Kildekode
-├── data/             # Data og eksporter
-├── docs/             # Dokumentasjon
-├── scripts/          # Hjelpeskript
-├── logs/             # Logger
-└── tests/            # Tester
+streamlit run src/min_kamp/streamlit_app.py
 ```
 
 ## Utvikling
 
-1. Installer utviklingsverktøy:
-```bash
-pre-commit install
-```
-
-2. Kjør tester:
+### Kjøre Tester
 ```bash
 pytest
 ```
 
-3. Kjør linting:
+### Kodekvalitet
 ```bash
+black .
+flake8
 mypy .
-ruff .
 ```
 
-## Lisens
+## Avhengigheter
+Se `pyproject.toml` for full liste over avhengigheter.
 
-[Din valgte lisens]
+## Lisens
+[Angi lisens]

@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Miljø
+.env
+venv
+env
+.venv
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Testfiler
+tests/
+
+# Midlertidige filer
+*.log
+*.tmp
+
+# Systemfiler
+.DS_Store
+Thumbs.db
+
+# Prosjektspesifikke mapper
+data/
+backup/ 

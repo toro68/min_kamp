@@ -1,20 +1,33 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="min_kamp",
-    version="1.0.0",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    name='min_kamp',
+    version='0.1.0',
+    packages=find_packages(where='src'),
+    package_dir={'': 'src'},
     install_requires=[
-        "streamlit>=1.24.0",
-        "pandas>=2.0.0",
-        "openpyxl>=3.1.0",
-        "python-dotenv>=1.0.0",
-        "SQLAlchemy>=2.0.0",
-        "bcrypt>=4.0.0",
-        "python-jose>=3.3.0",
-        "passlib>=1.7.4",
+        'streamlit==1.41.1',
+        'pandas==2.2.3',
+        'numpy==2.0.2',
+        'sqlalchemy',  # Legg til database-avhengigheter
+        'python-dotenv',
     ],
-    python_requires=">=3.9",
-    package_data={"min_kamp": ["py.typed"]},
+    extras_require={
+        'dev': [
+            'pytest',
+            'pytest-mock',
+            'flake8',
+            'black',
+        ],
+    },
+    author='Tor Inge Jossang',
+    description='Fotballlag management application',
+    long_description=open('README.md').read() if open('README.md').read() else '',
+    long_description_content_type='text/markdown',
+    url='https://github.com/toro68/min_kamp',
+    classifiers=[
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+    ],
 )
