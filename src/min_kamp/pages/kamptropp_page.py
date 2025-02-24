@@ -144,32 +144,54 @@ def vis_spillere(
         kamp_id: ID til aktiv kamp
     """
     try:
-        # Filtrer kun aktive spillere
-        active_spillere = [
-            s
-            for s in kamptropp["spillere"][posisjon]
-            if int(s["er_med"]) == 1
-        ]
-        if not active_spillere:
+        spillere = kamptropp["spillere"][posisjon]
+        if not spillere:
             return
 
         st.write(f"### {posisjon}")
 
-        # Vis hver aktiv spiller med navn og en 'Fjern'-knapp
-        for spiller in active_spillere:
-            col_name, col_action = st.columns([3, 1])
+        # Legg til en "Velg alle" checkbox for hver posisjon
+        velg_alle = st.checkbox(f"Velg alle {posisjon}", key=f"velg_alle_{posisjon}")
+
+        # Vis hver spiller med en checkbox for aktiv status (avhukingsboks)
+        for spiller in spillere:
+            is_active = bool(int(spiller["er_med"]))
+            col_name, col_checkbox = st.columns([3, 1])
             with col_name:
                 st.write(spiller["navn"])
-            with col_action:
-                if st.button(
-                    "Fjern",
-                    key=f"fjern_{spiller['id']}",
-                ):
-                    slett_spiller_fra_kamptropp(app_handler, kamp_id, spiller["id"])
-                    st.success(
-                        f"{spiller['navn']} fjernet"
-                    )
+            with col_checkbox:
+                # Bruk velg_alle til å sette checkbox-verdien
+                nye_verdi = st.checkbox(
+                    "", 
+                    value=velg_alle or is_active, 
+                    key=f"checkbox_{spiller['id']}",
+                )
+                
+                # Håndter endringer i spillerens status
+                if nye_verdi != is_active:
+                    if not nye_verdi:
+                        # Fjern spiller fra kamptropp
+                        slett_spiller_fra_kamptropp(app_handler, kamp_id, spiller["id"])
+                        st.success(f"{spiller['navn']} fjernet")
+                    else:
+                        # Legg til spiller i kamptropp (hvis ikke allerede med)
+                        try:
+                            with app_handler._database_handler.connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    "UPDATE kamptropp SET er_med = 1 "
+                                    "WHERE kamp_id = ? AND spiller_id = ?",
+                                    (kamp_id, spiller["id"]),
+                                )
+                                conn.commit()
+                            st.success(f"{spiller['navn']} lagt til")
+                        except Exception as e:
+                            logger.error(f"Feil ved legge til spiller: {e}")
+                            st.error(f"Kunne ikke legge til {spiller['navn']}")
+                    
+                    # Oppdater siden
                     st.rerun()
+
     except Exception as e:
         logger.error(
             "Feil ved visning av spillere for %s: %s",
