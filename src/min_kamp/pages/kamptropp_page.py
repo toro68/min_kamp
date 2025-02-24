@@ -86,22 +86,44 @@ def slett_spiller_fra_kamptropp(
     app_handler: AppHandler,
     kamp_id: int,
     spiller_id: int,
-) -> None:
+) -> bool:
     """Sletter en spiller fra kamptroppen.
 
     Args:
         app_handler: AppHandler instans
         kamp_id: ID til aktiv kamp
         spiller_id: ID til spilleren som skal slettes
+
+    Returns:
+        bool: True hvis sletting var vellykket, False ellers
     """
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
             logger.debug(
-                "Kaller slett_spiller_fra_kamptropp med kamp_id=%s, spiller_id=%s",
-                kamp_id,
-                spiller_id,
+                "Kaller slett_spiller_fra_kamptropp: "
+                "kamp_id=%s, spiller_id=%s", 
+                kamp_id, 
+                spiller_id
             )
+            
+            # Sjekk om spilleren eksisterer i kamptroppen
+            cursor.execute(
+                "SELECT * FROM kamptropp "
+                "WHERE kamp_id = ? AND spiller_id = ?",
+                (kamp_id, spiller_id)
+            )
+            eksisterende_spiller = cursor.fetchone()
+            
+            if not eksisterende_spiller:
+                logger.warning(
+                    "Ingen spiller funnet: kamp_id=%s, spiller_id=%s", 
+                    kamp_id, 
+                    spiller_id
+                )
+                st.warning(f"Spilleren finnes ikke i kamptroppen")
+                return False
+
             # Oppdaterer spillerens status til inaktiv (er_med = 0)
             cursor.execute(
                 "UPDATE kamptropp SET er_med = 0 "
@@ -109,24 +131,40 @@ def slett_spiller_fra_kamptropp(
                 (kamp_id, spiller_id),
             )
             rows = cursor.rowcount
+            
             logger.debug("Antall oppdaterte rader: %s", rows)
+            
+            if rows == 0:
+                logger.error(
+                    "Ingen rader oppdatert: kamp_id=%s, spiller_id=%s", 
+                    kamp_id, 
+                    spiller_id
+                )
+                st.error("Kunne ikke oppdatere spillerens status")
+                return False
+            
             conn.commit()
 
         logger.info(
-            "Sett spiller %s som inaktiv for kamp %s",
+            "Satt spiller %s som inaktiv for kamp %s",
             spiller_id,
             kamp_id,
         )
+        return True
+    
     except Exception as e:
         logger.error(
-            "Feil ved oppdatering av spiller %s til inaktiv for kamp %s: %s",
-            spiller_id,
-            kamp_id,
+            "Feil ved oppdatering av spiller %s til inaktiv for kamp %s: %s", 
+            spiller_id, 
+            kamp_id, 
             e,
+            exc_info=True  # Legg til full stack trace
         )
         st.error(
-            f"Kunne ikke sette spiller inaktiv med ID {spiller_id}"
+            f"Kunne ikke sette spiller inaktiv med ID {spiller_id}. "
+            f"Feil: {str(e)}"
         )
+        return False
 
 
 def slett_spiller_helt(
@@ -219,10 +257,16 @@ def vis_spillere(
                 if nye_verdi != is_active:
                     if not nye_verdi:
                         # Fjern spiller fra kamptropp
-                        slett_spiller_fra_kamptropp(
+                        if slett_spiller_fra_kamptropp(
                             app_handler, kamp_id, spiller["id"]
-                        )
-                        st.success(f"{spiller['navn']} fjernet")
+                        ):
+                            st.success(
+                                f"Spilleren {spiller['navn']} fjernet"
+                            )
+                        else:
+                            st.error(
+                                f"Kunne ikke fjerne spilleren {spiller['navn']}"
+                            )
                     else:
                         # Legg til spiller i kamptropp (hvis ikke allerede med)
                         try:
@@ -234,10 +278,14 @@ def vis_spillere(
                                     (kamp_id, spiller["id"]),
                                 )
                                 conn.commit()
-                            st.success(f"{spiller['navn']} lagt til")
+                            st.success(
+                                f"Spilleren {spiller['navn']} lagt til"
+                            )
                         except Exception as e:
                             logger.error(f"Feil ved legge til spiller: {e}")
-                            st.error(f"Kunne ikke legge til {spiller['navn']}")
+                            st.error(
+                                f"Kunne ikke legge til spilleren {spiller['navn']}"
+                            )
                     
                     # Oppdater siden
                     st.rerun()
