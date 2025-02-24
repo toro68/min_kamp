@@ -82,6 +82,35 @@ def opprett_spiller(
         return None
 
 
+def slett_spiller_fra_kamptropp(
+    app_handler: AppHandler, kamp_id: int, spiller_id: int
+) -> None:
+    """Sletter en spiller fra kamptroppen.
+
+    Args:
+        app_handler: AppHandler instans
+        kamp_id: ID til aktiv kamp
+        spiller_id: ID til spilleren som skal slettes
+    """
+    try:
+        with app_handler._database_handler.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM kamptropp WHERE kamp_id = ? AND spiller_id = ?",
+                (kamp_id, spiller_id),
+            )
+            conn.commit()
+        logger.info("Slettet spiller %s fra kamp %s", spiller_id, kamp_id)
+    except Exception as e:
+        logger.error(
+            "Feil ved sletting av spiller %s fra kamp %s: %s",
+            spiller_id,
+            kamp_id,
+            e,
+        )
+        st.error(f"Kunne ikke slette spiller med ID {spiller_id}")
+
+
 def vis_spillere(
     kamptropp: Dict[str, Any], posisjon: str, app_handler: AppHandler, kamp_id: int
 ) -> None:
@@ -113,16 +142,25 @@ def vis_spillere(
                     # Spiller er valgt - oppdater i database
                     if not spiller["er_med"]:
                         app_handler.kamp_handler.oppdater_spiller_status(
-                            kamp_id=kamp_id, spiller_id=spiller["id"], er_med=True
+                            kamp_id=kamp_id,
+                            spiller_id=spiller["id"],
+                            er_med=True,
                         )
                         st.rerun()
                 else:
                     # Spiller er ikke valgt - oppdater i database
                     if spiller["er_med"]:
                         app_handler.kamp_handler.oppdater_spiller_status(
-                            kamp_id=kamp_id, spiller_id=spiller["id"], er_med=False
+                            kamp_id=kamp_id,
+                            spiller_id=spiller["id"],
+                            er_med=False,
                         )
                         st.rerun()
+                # Legg til en knapp for å slette spilleren
+                if st.button("Slett", key=f"slett_{spiller['id']}"):
+                    slett_spiller_fra_kamptropp(app_handler, kamp_id, spiller["id"])
+                    st.success(f"{spiller['navn']} slettet")
+                    st.rerun()
 
     except Exception as e:
         logger.error("Feil ved visning av spillere for %s: %s", posisjon, e)
