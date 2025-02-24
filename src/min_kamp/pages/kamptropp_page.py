@@ -172,7 +172,7 @@ def slett_spiller_helt(
     kamp_id: int,
     spiller_id: int,
 ) -> bool:
-    """Sletter en spiller helt fra kamptroppen.
+    """Sletter en spiller helt fra kamptroppen og spillerdatabasen.
 
     Args:
         app_handler: AppHandler instans
@@ -185,26 +185,69 @@ def slett_spiller_helt(
     try:
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
+            
+            # Sjekk om spilleren eksisterer
+            cursor.execute(
+                "SELECT * FROM spiller WHERE id = ?", 
+                (spiller_id,)
+            )
+            eksisterende_spiller = cursor.fetchone()
+            
+            if not eksisterende_spiller:
+                logger.warning(
+                    "Ingen spiller funnet med ID: %s", 
+                    spiller_id
+                )
+                st.warning(f"Spilleren med ID {spiller_id} eksisterer ikke")
+                return False
+
             # Slett spilleren fra kamptroppen
             cursor.execute(
                 "DELETE FROM kamptropp "
                 "WHERE kamp_id = ? AND spiller_id = ?",
                 (kamp_id, spiller_id)
             )
-            conn.commit()
-            
-            logger.info(
-                "Spiller %s slettet helt fra kamp %s", 
-                spiller_id, 
-                kamp_id
+            kamptropp_rader = cursor.rowcount
+
+            # Slett spilleren fra spillertabellen
+            cursor.execute(
+                "DELETE FROM spiller WHERE id = ?", 
+                (spiller_id,)
             )
-        return True
+            spiller_rader = cursor.rowcount
+
+            # Commit transaksjonen
+            conn.commit()
+
+            # Logg resultatene
+            logger.info(
+                "Slettet spiller %s fra kamp %s. "
+                "Kamptropp rader slettet: %s, Spillere slettet: %s", 
+                spiller_id, 
+                kamp_id, 
+                kamptropp_rader,
+                spiller_rader
+            )
+
+            # Sjekk om slettingen var vellykket
+            if spiller_rader == 0:
+                st.error(f"Kunne ikke slette spilleren med ID {spiller_id}")
+                return False
+
+            st.success(f"Spilleren er fullstendig fjernet")
+            return True
+    
     except Exception as e:
         logger.error(
             "Feil ved sletting av spiller %s fra kamp %s: %s", 
             spiller_id, 
             kamp_id, 
-            e
+            e,
+            exc_info=True
+        )
+        st.error(
+            f"En feil oppstod ved sletting av spilleren. "
+            f"Feilmelding: {str(e)}"
         )
         return False
 
