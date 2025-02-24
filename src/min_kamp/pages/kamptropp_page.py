@@ -209,9 +209,10 @@ def vis_spillere(
             with col_checkbox:
                 # Bruk velg_alle til å sette checkbox-verdien
                 nye_verdi = st.checkbox(
-                    "", 
+                    f"Aktiv {spiller['navn']}", 
                     value=velg_alle or is_active, 
-                    key=f"checkbox_{spiller['id']}",
+                    key=f"checkbox_{spiller['id']}", 
+                    label_visibility="hidden"
                 )
                 
                 # Håndter endringer i spillerens status
@@ -246,7 +247,7 @@ def vis_spillere(
                 if st.button(
                     "Slett", 
                     key=f"slett_{spiller['id']}", 
-                    help="Fjern spilleren helt fra troppen"
+                    help=f"Fjern {spiller['navn']} helt fra troppen"
                 ):
                     # Bekreftelsesdialog
                     if st.checkbox(
