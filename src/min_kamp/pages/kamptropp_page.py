@@ -148,7 +148,7 @@ def vis_spillere(
         active_spillere = [
             s
             for s in kamptropp["spillere"][posisjon]
-            if s["er_med"]
+            if int(s["er_med"]) == 1
         ]
         if not active_spillere:
             return
