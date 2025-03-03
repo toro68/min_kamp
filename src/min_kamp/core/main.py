@@ -9,14 +9,15 @@ Se spesielt:
 
 import logging
 import os
-from streamlit import set_page_config, error as st_error
 
 from min_kamp.db.auth.auth_views import check_auth
-from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.db_handler import DatabaseHandler
+from min_kamp.db.handlers.app_handler import AppHandler
 from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
-from min_kamp.pages.page_renderer import render_page
 from min_kamp.pages.components.sidebar import setup_sidebar
+from min_kamp.pages.page_renderer import render_page
+from streamlit import error as st_error
+from streamlit import set_page_config
 
 # Konfigurer logging
 logging.basicConfig(
@@ -43,7 +44,10 @@ def main() -> None:
         setup_streamlit()
 
         # Opprett app_handler
-        db_handler = DatabaseHandler()
+        database_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "database", "kampdata.db"
+        )
+        db_handler = DatabaseHandler(database_path=database_path)
 
         # Kjør migrasjoner
         migrasjoner_mappe = os.path.join(
@@ -66,7 +70,7 @@ def main() -> None:
     except Exception as e:
         err_msg = f"Kritisk feil i hovedapplikasjon: {str(e)}"
         logger.error(err_msg, exc_info=True)
-        st_error("En feil oppstod i applikasjonen. " "Vennligst prøv igjen senere.")
+        st_error("En feil oppstod i applikasjonen. Vennligst prøv igjen senere.")
 
 
 if __name__ == "__main__":

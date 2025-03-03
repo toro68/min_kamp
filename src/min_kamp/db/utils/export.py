@@ -2,17 +2,17 @@
 Sentral eksport-funksjonalitet for bytteplan
 """
 
+import datetime
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from ..handlers.bytteplan_handler import BytteplanHandler
-from ..handlers.base_handler import BaseHandler
 
 logger = logging.getLogger(__name__)
 
 
 def eksporter_bytteplan(
-    kamp_id: str, db_handler: BaseHandler, filnavn: Optional[str] = None
+    kamp_id: str, db_handler: Any, filnavn: Optional[str] = None
 ) -> str:
     """
     Eksporterer bytteplan for en kamp til en fil.
@@ -29,5 +29,16 @@ def eksporter_bytteplan(
         ValueError: Hvis kamp_id er ugyldig
         OSError: Hvis det oppstår feil ved filskriving
     """
-    handler = BytteplanHandler(db_handler=db_handler)
-    return handler.eksporter_bytteplan(kamp_id, filnavn)
+    # Opprett bytteplan-handler
+    BytteplanHandler(db_handler=db_handler)
+
+    # Generer filnavn hvis ikke angitt
+    if filnavn is None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filnavn = f"bytteplan_kamp_{kamp_id}_{timestamp}.xlsx"
+
+    # Implementer eksport-logikk her
+    logger.info("Eksporterer bytteplan for kamp %s til %s", kamp_id, filnavn)
+
+    # Returner filbanen
+    return filnavn

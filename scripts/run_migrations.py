@@ -4,7 +4,9 @@ Kjører databasemigrasjoner.
 """
 
 import logging
-from min_kamp.db.migrations.migrations_handler import MigrationsHandler
+
+from min_kamp.db.db_handler import DatabaseHandler
+from min_kamp.db.migrations.migrations_handler import kjor_migrasjoner
 
 # Logging oppsett
 logging.basicConfig(
@@ -18,20 +20,15 @@ def main() -> None:
     """Hovedfunksjon som kjører migrasjonene."""
     try:
         logger.info("Starter kjøring av migrasjoner")
-        migrations_handler = MigrationsHandler()
-        migrations_handler.run_migrations()
+        database_path = "database/kampdata.db"
+        db_handler = DatabaseHandler(database_path=database_path)
+        migrasjoner_mappe = "src/min_kamp/db/migrations"
+        kjor_migrasjoner(db_handler, migrasjoner_mappe)
         logger.info("Migrasjoner fullført")
 
         # Vis status
-        status = migrations_handler.get_migration_status()
-        logger.info("\nMigrasjonsstatus:")
-        for migration in status:
-            logger.info(
-                "%s: %s (fil eksisterer: %s)",
-                migration["name"],
-                "Kjørt" if migration["is_applied"] else "Ikke kjørt",
-                migration["file_exists"],
-            )
+        # Merk: Status-visning er ikke tilgjengelig med kjor_migrasjoner-
+        # funksjonen. Fjernet kode for å vise status.
 
     except Exception as e:
         logger.error("Feil ved kjøring av migrasjoner: %s", e)

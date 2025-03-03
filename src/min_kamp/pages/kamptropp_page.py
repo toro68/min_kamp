@@ -101,27 +101,25 @@ def slett_spiller_fra_kamptropp(
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
             logger.debug(
-                "Kaller slett_spiller_fra_kamptropp: "
-                "kamp_id=%s, spiller_id=%s", 
-                kamp_id, 
-                spiller_id
+                "Kaller slett_spiller_fra_kamptropp: " "kamp_id=%s, spiller_id=%s",
+                kamp_id,
+                spiller_id,
             )
-            
+
             # Sjekk om spilleren eksisterer i kamptroppen
             cursor.execute(
-                "SELECT * FROM kamptropp "
-                "WHERE kamp_id = ? AND spiller_id = ?",
-                (kamp_id, spiller_id)
+                "SELECT * FROM kamptropp " "WHERE kamp_id = ? AND spiller_id = ?",
+                (kamp_id, spiller_id),
             )
             eksisterende_spiller = cursor.fetchone()
-            
+
             if not eksisterende_spiller:
                 logger.warning(
-                    "Ingen spiller funnet: kamp_id=%s, spiller_id=%s", 
-                    kamp_id, 
-                    spiller_id
+                    "Ingen spiller funnet: kamp_id=%s, spiller_id=%s",
+                    kamp_id,
+                    spiller_id,
                 )
-                st.warning(f"Spilleren finnes ikke i kamptroppen")
+                st.warning("Spilleren finnes ikke i kamptroppen")
                 return False
 
             # Oppdaterer spillerens status til inaktiv (er_med = 0)
@@ -131,18 +129,18 @@ def slett_spiller_fra_kamptropp(
                 (kamp_id, spiller_id),
             )
             rows = cursor.rowcount
-            
+
             logger.debug("Antall oppdaterte rader: %s", rows)
-            
+
             if rows == 0:
                 logger.error(
-                    "Ingen rader oppdatert: kamp_id=%s, spiller_id=%s", 
-                    kamp_id, 
-                    spiller_id
+                    "Ingen rader oppdatert: kamp_id=%s, spiller_id=%s",
+                    kamp_id,
+                    spiller_id,
                 )
                 st.error("Kunne ikke oppdatere spillerens status")
                 return False
-            
+
             conn.commit()
 
         logger.info(
@@ -151,18 +149,17 @@ def slett_spiller_fra_kamptropp(
             kamp_id,
         )
         return True
-    
+
     except Exception as e:
         logger.error(
-            "Feil ved oppdatering av spiller %s til inaktiv for kamp %s: %s", 
-            spiller_id, 
-            kamp_id, 
+            "Feil ved oppdatering av spiller %s til inaktiv for kamp %s: %s",
+            spiller_id,
+            kamp_id,
             e,
-            exc_info=True  # Legg til full stack trace
+            exc_info=True,  # Legg til full stack trace
         )
         st.error(
-            f"Kunne ikke sette spiller inaktiv med ID {spiller_id}. "
-            f"Feil: {str(e)}"
+            f"Kunne ikke sette spiller inaktiv med ID {spiller_id}. " f"Feil: {str(e)}"
         )
         return False
 
@@ -185,58 +182,38 @@ def slett_spiller_helt(
     try:
         # Logg detaljert informasjon ved start av sletteprosess
         logger.info(
-            "Starter sletting av spiller. "
-            "Kamp ID: %s, Spiller ID: %s", 
-            kamp_id, 
-            spiller_id
+            "Starter sletting av spiller. " "Kamp ID: %s, Spiller ID: %s",
+            kamp_id,
+            spiller_id,
         )
 
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
-            
+
             # Hent detaljer om spilleren før sletting
-            cursor.execute(
-                "SELECT * FROM spiller WHERE id = ?", 
-                (spiller_id,)
-            )
+            cursor.execute("SELECT * FROM spiller WHERE id = ?", (spiller_id,))
             eksisterende_spiller = cursor.fetchone()
-            
+
             if not eksisterende_spiller:
-                logger.warning(
-                    "Ingen spiller funnet med ID: %s", 
-                    spiller_id
-                )
+                logger.warning("Ingen spiller funnet med ID: %s", spiller_id)
                 st.warning(f"Spilleren med ID {spiller_id} eksisterer ikke")
                 return False
 
             # Logg spillerdetaljer
-            logger.info(
-                "Spillerdetaljer før sletting: %s", 
-                eksisterende_spiller
-            )
+            logger.info("Spillerdetaljer før sletting: %s", eksisterende_spiller)
 
             # Slett spilleren fra kamptroppen
             cursor.execute(
-                "DELETE FROM kamptropp "
-                "WHERE kamp_id = ? AND spiller_id = ?",
-                (kamp_id, spiller_id)
+                "DELETE FROM kamptropp " "WHERE kamp_id = ? AND spiller_id = ?",
+                (kamp_id, spiller_id),
             )
             kamptropp_rader = cursor.rowcount
-            logger.info(
-                "Slettet %s rader fra kamptropp", 
-                kamptropp_rader
-            )
+            logger.info("Slettet %s rader fra kamptropp", kamptropp_rader)
 
             # Slett spilleren fra spillertabellen
-            cursor.execute(
-                "DELETE FROM spiller WHERE id = ?", 
-                (spiller_id,)
-            )
+            cursor.execute("DELETE FROM spiller WHERE id = ?", (spiller_id,))
             spiller_rader = cursor.rowcount
-            logger.info(
-                "Slettet %s rader fra spillertabell", 
-                spiller_rader
-            )
+            logger.info("Slettet %s rader fra spillertabell", spiller_rader)
 
             # Commit transaksjonen
             conn.commit()
@@ -244,43 +221,32 @@ def slett_spiller_helt(
 
             # Sjekk om slettingen var vellykket
             if spiller_rader == 0:
-                logger.error(
-                    "Kunne ikke slette spilleren med ID %s", 
-                    spiller_id
-                )
+                logger.error("Kunne ikke slette spilleren med ID %s", spiller_id)
                 st.error(f"Kunne ikke slette spilleren med ID {spiller_id}")
                 return False
 
             # Bekreft sletting ved å sjekke at spilleren ikke lenger eksisterer
-            cursor.execute(
-                "SELECT * FROM spiller WHERE id = ?", 
-                (spiller_id,)
-            )
+            cursor.execute("SELECT * FROM spiller WHERE id = ?", (spiller_id,))
             bekreftet_slettet = cursor.fetchone() is None
-            
+
             if bekreftet_slettet:
-                st.success(f"Spilleren er fullstendig fjernet")
+                st.success("Spilleren er fullstendig fjernet")
                 logger.info(
-                    "Spiller %s fullstendig fjernet fra kamp %s", 
-                    spiller_id, 
-                    kamp_id
+                    "Spiller %s fullstendig fjernet fra kamp %s", spiller_id, kamp_id
                 )
                 return True
             else:
-                logger.error(
-                    "Spilleren %s kunne ikke slettes fullstendig", 
-                    spiller_id
-                )
-                st.error(f"Kunne ikke slette spilleren fullstendig")
+                logger.error("Spilleren %s kunne ikke slettes fullstendig", spiller_id)
+                st.error("Kunne ikke slette spilleren fullstendig")
                 return False
-    
+
     except Exception as e:
         logger.error(
-            "Kritisk feil ved sletting av spiller %s fra kamp %s: %s", 
-            spiller_id, 
-            kamp_id, 
+            "Kritisk feil ved sletting av spiller %s fra kamp %s: %s",
+            spiller_id,
+            kamp_id,
             e,
-            exc_info=True
+            exc_info=True,
         )
         st.error(
             f"En kritisk feil oppstod ved sletting av spilleren. "
@@ -311,28 +277,25 @@ def vis_spillere(
         st.write(f"### {posisjon}")
 
         # Legg til en "Velg alle" checkbox for hver posisjon
-        velg_alle = st.checkbox(
-            f"Velg alle {posisjon}", 
-            key=f"velg_alle_{posisjon}"
-        )
+        velg_alle = st.checkbox(f"Velg alle {posisjon}", key=f"velg_alle_{posisjon}")
 
         # Vis hver spiller med en checkbox for aktiv status (avhukingsboks)
         for spiller in spillere:
             is_active = bool(int(spiller["er_med"]))
             col_name, col_checkbox, col_slett = st.columns([3, 1, 1])
-            
+
             with col_name:
                 st.write(spiller["navn"])
-            
+
             with col_checkbox:
                 # Bruk velg_alle til å sette checkbox-verdien
                 nye_verdi = st.checkbox(
-                    f"Aktiv {spiller['navn']}", 
-                    value=velg_alle or is_active, 
-                    key=f"checkbox_{spiller['id']}", 
-                    label_visibility="hidden"
+                    f"Aktiv {spiller['navn']}",
+                    value=velg_alle or is_active,
+                    key=f"checkbox_{spiller['id']}",
+                    label_visibility="hidden",
                 )
-                
+
                 # Håndter endringer i spillerens status
                 if nye_verdi != is_active:
                     if not nye_verdi:
@@ -340,60 +303,59 @@ def vis_spillere(
                         if slett_spiller_fra_kamptropp(
                             app_handler, kamp_id, spiller["id"]
                         ):
-                            st.success(
-                                f"Spilleren {spiller['navn']} fjernet"
-                            )
+                            st.success(f"Spilleren {spiller['navn']} fjernet")
                         else:
-                            st.error(
-                                f"Kunne ikke fjerne spilleren {spiller['navn']}"
-                            )
+                            st.error(f"Kunne ikke fjerne spilleren {spiller['navn']}")
                     else:
                         # Legg til spiller i kamptropp (hvis ikke allerede med)
                         try:
                             with app_handler._database_handler.connection() as conn:
                                 cursor = conn.cursor()
+                                # Prøv først å oppdatere eksisterende rad
                                 cursor.execute(
                                     "UPDATE kamptropp SET er_med = 1 "
                                     "WHERE kamp_id = ? AND spiller_id = ?",
                                     (kamp_id, spiller["id"]),
                                 )
+
+                                # Hvis ingen rader ble påvirket, legg til en ny rad
+                                if cursor.rowcount == 0:
+                                    cursor.execute(
+                                        "INSERT INTO kamptropp "
+                                        "(kamp_id, spiller_id, er_med) "
+                                        "VALUES (?, ?, 1)",
+                                        (kamp_id, spiller["id"]),
+                                    )
+
                                 conn.commit()
-                            st.success(
-                                f"Spilleren {spiller['navn']} lagt til"
-                            )
+                            st.success(f"Spilleren {spiller['navn']} lagt til")
                         except Exception as e:
                             logger.error(f"Feil ved legge til spiller: {e}")
                             st.error(
                                 f"Kunne ikke legge til spilleren {spiller['navn']}"
                             )
-                    
+
                     # Oppdater siden
                     st.rerun()
-            
+
             # Legg til slett-knapp
             with col_slett:
                 if st.button(
-                    "Slett", 
-                    key=f"slett_{spiller['id']}", 
-                    help=f"Fjern {spiller['navn']} helt fra troppen"
+                    "Slett",
+                    key=f"slett_{spiller['id']}",
+                    help=f"Fjern {spiller['navn']} helt fra troppen",
                 ):
                     # Bekreftelsesdialog
                     if st.checkbox(
-                        f"Bekreft sletting av {spiller['navn']}", 
-                        key=f"bekreft_slett_{spiller['id']}"
+                        f"Bekreft sletting av {spiller['navn']}",
+                        key=f"bekreft_slett_{spiller['id']}",
                     ):
                         # Forsøk å slette spilleren helt
-                        if slett_spiller_helt(
-                            app_handler, kamp_id, spiller["id"]
-                        ):
-                            st.success(
-                                f"{spiller['navn']} er slettet fra troppen"
-                            )
+                        if slett_spiller_helt(app_handler, kamp_id, spiller["id"]):
+                            st.success(f"{spiller['navn']} er slettet fra troppen")
                             st.rerun()
                         else:
-                            st.error(
-                                f"Kunne ikke slette {spiller['navn']}"
-                            )
+                            st.error(f"Kunne ikke slette {spiller['navn']}")
 
     except Exception as e:
         logger.error(

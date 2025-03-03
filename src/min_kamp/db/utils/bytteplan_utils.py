@@ -31,11 +31,11 @@ def tell_spillere_per_periode(
     """
     resultat = {}
     for periode in range(antall_perioder):
-        antall = sum(
-            1
-            for spiller_perioder in spilletider.values()
-            if (periode < len(spiller_perioder) and spiller_perioder[periode])
-        )
+        antall = 0
+        for spiller_perioder in spilletider.values():
+            if periode < len(spiller_perioder):
+                if spiller_perioder[periode]:
+                    antall += 1
         resultat[periode] = antall
     return resultat
 
@@ -57,8 +57,10 @@ def oppdater_spilletid_summer(spilletid_handler: BytteplanHandler) -> bool:
             return False
 
         # Hent data via handler
+        # NB: spilletid_data er en liste med dictionaries som inneholder
+        # spiller_id og minutter, ikke en liste med Spilletid-objekter
         spilletid_data = spilletid_handler.hent_spilletid(int(str(kamp_id)))
-        if spilletid_data is None:
+        if not spilletid_data:
             logger.error("Kunne ikke hente spilletid-data")
             return False
 
@@ -68,10 +70,11 @@ def oppdater_spilletid_summer(spilletid_handler: BytteplanHandler) -> bool:
             logger.warning("Ingen spiller_id funnet")
             return False
 
+        # Behandle spilletid_data som en liste med dictionaries
         spiller_spilletid = None
         for spilletid_rad in spilletid_data:
-            if spilletid_rad["spiller_id"] == int(spiller_id):
-                spiller_spilletid = spilletid_rad["minutter"]
+            if spilletid_rad["spiller_id"] == int(spiller_id):  # type: ignore
+                spiller_spilletid = spilletid_rad["minutter"]  # type: ignore
                 break
 
         if spiller_spilletid is None:
@@ -136,7 +139,7 @@ def hent_bytter(spillere: dict, periode_idx: int) -> Tuple[List[str], List[str]]
     return sorted(bytter_inn), sorted(bytter_ut)
 
 
-def formater_bytter(bytter_inn: list[str], bytter_ut: list[str]) -> str:
+def formater_bytter(bytter_inn: List[str], bytter_ut: List[str]) -> str:
     """Formaterer bytter til en lesbar streng.
 
     Args:
@@ -144,8 +147,8 @@ def formater_bytter(bytter_inn: list[str], bytter_ut: list[str]) -> str:
         bytter_ut: Liste med navn på spillere som går ut
 
     Returns:
-        Formatert streng med bytter, f.eks. "INN: Spiller1, Spiller2 | UT: Spiller3"
-        Returnerer "-" hvis ingen bytter
+        Formatert streng med bytter, f.eks. "INN: Spiller1, Spiller2 |
+        UT: Spiller3". Returnerer "-" hvis ingen bytter
     """
     if not bytter_inn and not bytter_ut:
         return "-"

@@ -1,9 +1,9 @@
 """Retry utilities for database operations."""
 
 import functools
-import time
 import logging
-from typing import Any, Callable, TypeVar
+import time
+from typing import Any, Callable, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def with_retry(
     initial_delay: float = 0.1,
     max_delay: float = 2.0,
     backoff_factor: float = 2.0,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable[[Callable[..., T]], Callable[..., Optional[T]]]:
     """Dekoratør som prøver operasjonen på nytt ved feil.
 
     Args:
@@ -25,9 +25,9 @@ def with_retry(
         backoff_factor: Faktor for eksponentiell økning av ventetid
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> T:
+        def wrapper(*args: Any, **kwargs: Any) -> Optional[T]:
             delay = initial_delay
             last_exception = None
 
@@ -38,7 +38,7 @@ def with_retry(
                     last_exception = e
                     if "database is locked" in str(e):
                         logger.warning(
-                            "Database låst, forsøk %d/%d. Venter %.1f sekunder",
+                            "Database låst, forsøk %d/%d. Venter %.1f sek",
                             attempt + 1,
                             max_retries,
                             delay,

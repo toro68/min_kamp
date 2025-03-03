@@ -41,7 +41,7 @@ def hent_kamptropp(app_handler: AppHandler) -> None:
         return
 
     # Hent kamptropp
-    kamptropp = app_handler.kamptropp_handler.hent_kamptropp(kamp_id, bruker_id)
+    kamptropp = app_handler.kamp_handler.hent_kamptropp(kamp_id, bruker_id)
     if not kamptropp:
         st.error("Kunne ikke hente kamptropp")
         return
