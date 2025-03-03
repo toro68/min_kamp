@@ -366,7 +366,7 @@ def lag_fotballbane_html(
                 const bane = document.querySelector('.fotballbane');
                 const periode_id = bane.getAttribute('data-periode-id');
 
-                console.log('Lagrer posisjoner:', {{ periode_id, posisjoner }});
+                console.log('Lagrer posisjoner - periode_id:', periode_id, 'posisjoner:', posisjoner);
 
                 // Send data til Streamlit via URL-parameter
                 const data = {{
@@ -374,17 +374,30 @@ def lag_fotballbane_html(
                     posisjoner: posisjoner
                 }};
 
-                // Oppdater URL med data
+                // Oppdater URL med data, men ikke trigger en full side-refresh
                 const searchParams = new URLSearchParams(window.parent.location.search);
                 searchParams.set('banekart_data', JSON.stringify(data));
-                const newUrl = window.parent.location.pathname + '?' +
-                    searchParams.toString();
-                window.parent.history.pushState({{}}, '', newUrl);
-
-                // Trigger en Streamlit rerun
+                
+                // Bruk fetch API for å sende data til serveren uten å refreshe siden
+                fetch(window.parent.location.pathname + '?' + searchParams.toString(), {{
+                    method: 'GET',
+                    headers: {{
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }}
+                }}).then(response => {{
+                    console.log('Posisjoner sendt til server');
+                }}).catch(error => {{
+                    console.error('Feil ved sending av posisjoner:', error);
+                }});
+                
+                // Oppdater URL uten å refreshe siden
+                window.parent.history.pushState({{}}, '', window.parent.location.pathname + '?' + searchParams.toString());
+                
+                // Send melding til Streamlit uten å trigge full rerun
                 window.parent.postMessage({{
-                    type: 'streamlit:setUrlInfo',
-                    queryParams: Object.fromEntries(searchParams)
+                    type: 'streamlit:setComponentValue',
+                    data: data
                 }}, '*');
             }}
 
@@ -1367,7 +1380,8 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                 selected_formation,
                             )
                             st.success("Formasjon lagret")
-                            st.rerun()
+                            logger.debug("Lagring vellykket, men kjører ikke rerun for å unngå flimring")
+                            # Fjernet st.rerun() for å unngå flimring
                         else:
                             logger.error(
                                 "Kunne ikke lagre formasjon for periode %s",
@@ -1583,9 +1597,9 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             function sendToStreamlit(data) {
                 try {
                     console.log('Prøver å sende data:', data);
-                    const event = new CustomEvent('streamlit:message', {
+                    const event = new CustomEvent('streamlit:setComponentValue', {
                         bubbles: true,
-                        detail: { type: 'streamlit:banekart', data: data }
+                        detail: { type: 'streamlit:setComponentValue', data: data }
                     });
                     window.dispatchEvent(event);
                     console.log('Data sendt');
@@ -1595,7 +1609,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             }
 
             window.addEventListener('message', function(e) {
-                if (e.data && e.data.type === 'streamlit:banekart') {
+                if (e.data && e.data.type === 'streamlit:setComponentValue') {
                     console.log('Mottok banekart data:', e.data);
                     sendToStreamlit(e.data.data);
                 }
@@ -1605,7 +1619,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             height=0,
         )
 
-        # Håndter banekart event
+        # Håndter banekart data fra component_value
         if "component_value" in st.session_state:
             banekart_data = st.session_state.component_value
             logger.debug("Mottok banekart data i session state: %s", banekart_data)
@@ -1627,8 +1641,8 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                         if success:
                             logger.info("Posisjoner lagret for periode %d", periode_id)
                             st.success("Posisjoner lagret")
+                            # Fjern data fra session state
                             del st.session_state["component_value"]
-                            st.rerun()
                         else:
                             logger.error(
                                 "Kunne ikke lagre posisjoner for periode %d", periode_id
@@ -1639,6 +1653,34 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data: %s", str(e))
                 st.error("Kunne ikke håndtere banekart data")
+
+        # Håndter banekart data fra URL (for bakoverkompatibilitet)
+        banekart_data_str = st.query_params.get("banekart_data")
+        if banekart_data_str:
+            try:
+                banekart_data = json.loads(banekart_data_str)
+                logger.debug("Mottok data fra URL: %s", banekart_data)
+
+                if isinstance(banekart_data, dict):
+                    try:
+                        periode_id = int(banekart_data.get("periode_id", 0))
+                        posisjoner = banekart_data.get("posisjoner", {})
+                        logger.debug("Posisjoner fra URL: %s", posisjoner)
+
+                        if posisjoner:
+                            success = lagre_banekart(
+                                app_handler, kamp_id, periode_id, posisjoner
+                            )
+                            if success:
+                                logger.info("Posisjoner lagret fra URL")
+                            else:
+                                logger.error("Kunne ikke lagre posisjoner fra URL")
+                        else:
+                            logger.warning("Ingen posisjoner å lagre fra URL")
+                    except ValueError as e:
+                        logger.error("Ugyldig periode_id fra URL: %s", str(e))
+            except Exception as e:
+                logger.error("Feil ved håndtering av banekart data fra URL: %s", str(e))
 
             # Fjern data fra URL uansett
             st.query_params.pop("banekart_data", None)
@@ -1685,8 +1727,8 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                     if lagre_grunnformasjon(app_handler, kamp_id, selected_formation):
                         logger.info("Grunnformasjon lagret: %s", selected_formation)
                         st.success("Grunnformasjon lagret")
-                        logger.debug("Starter rerun etter vellykket lagring")
-                        st.rerun()
+                        logger.debug("Lagring vellykket, men kjører ikke rerun for å unngå flimring")
+                        # Fjernet st.rerun() for å unngå flimring
                     else:
                         logger.error("lagre_grunnformasjon returnerte False")
                         st.error("Kunne ikke lagre grunnformasjon")
