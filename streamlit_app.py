@@ -60,8 +60,23 @@ logging.debug("\n=== Database Setup ===")
 logging.debug(f"Database path: {database_path}")
 logging.debug(f"Migrasjoner mappe: {migrasjoner_mappe}")
 
+
 # Opprett databasetilkobling
-db_handler = DatabaseHandler(database_path)
+@st.cache_resource
+def get_database_handler(db_path):
+    """Henter en cached DatabaseHandler-instans.
+
+    Args:
+        db_path: Sti til databasefilen
+
+    Returns:
+        DatabaseHandler: En instans av DatabaseHandler
+    """
+    logging.debug(f"Oppretter ny DatabaseHandler for {db_path}")
+    return DatabaseHandler(db_path)
+
+
+db_handler = get_database_handler(database_path)
 app_handler = AppHandler(db_handler)
 
 # Kjør migrasjoner
