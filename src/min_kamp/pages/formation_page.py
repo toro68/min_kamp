@@ -371,38 +371,38 @@ def lag_fotballbane_html(
         <head>
             <meta charset="utf-8">
             <style>
-                .fotballbane {{{{
+                .fotballbane {{
                     position: relative;
                     overflow: visible !important;
                     touch-action: none;
                     user-select: none;
                     -webkit-user-select: none;
                     background-color: #2e8b57;
-                    width: {{3}}px;
-                    height: {{4}}px;
-                }}}}
-                .straffeomraade {{{{
+                    width: {3}px;
+                    height: {4}px;
+                }}
+                .straffeomraade {{
                     position: absolute;
                     border: 2px solid white;
                     width: 40%;
                     height: 20%;
                     left: 30%;
                     box-sizing: border-box;
-                }}}}
-                .straffeomraade-topp {{{{
+                }}
+                .straffeomraade-topp {{
                     top: 0;
-                }}}}
-                .straffeomraade-bunn {{{{
+                }}
+                .straffeomraade-bunn {{
                     bottom: 0;
-                }}}}
-                .midtlinje {{{{
+                }}
+                .midtlinje {{
                     position: absolute;
                     width: 100%;
                     height: 0;
                     top: 50%;
                     border-top: 2px solid white;
-                }}}}
-                .midtsirkel {{{{
+                }}
+                .midtsirkel {{
                     position: absolute;
                     width: 200px;
                     height: 200px;
@@ -411,11 +411,11 @@ def lag_fotballbane_html(
                     transform: translate(-50%, -50%);
                     border: 2px solid white;
                     border-radius: 50%;
-                }}}}
-                .spiller {{{{
+                }}
+                .spiller {{
                     position: absolute;
-                    width: {{0}}px;
-                    height: {{0}}px;
+                    width: {0}px;
+                    height: {0}px;
                     border-radius: 50%;
                     background-color: red;
                     color: white;
@@ -428,13 +428,13 @@ def lag_fotballbane_html(
                     touch-action: none;
                     user-select: none;
                     -webkit-user-select: none;
-                }}}}
-                .spiller.paa-benken {{{{
+                }}
+                .spiller.paa-benken {{
                     position: relative;
                     display: inline-flex;
                     margin: 5px;
-                }}}}
-                .benk {{{{
+                }}
+                .benk {{
                     position: absolute;
                     top: 100%;
                     left: 0;
@@ -445,27 +445,27 @@ def lag_fotballbane_html(
                     display: flex;
                     flex-wrap: wrap;
                     justify-content: center;
-                }}}}
-                .periode-velger {{{{
+                }}
+                .periode-velger {{
                     position: absolute;
                     top: -40px;
                     left: 0;
                     width: 100%;
                     display: flex;
                     justify-content: center;
-                }}}}
-                .periode-knapp {{{{
+                }}
+                .periode-knapp {{
                     margin: 0 5px;
                     padding: 5px 10px;
                     background-color: #f0f0f0;
                     border: 1px solid #ccc;
                     cursor: pointer;
-                }}}}
-                .periode-knapp.aktiv {{{{
+                }}
+                .periode-knapp.aktiv {{
                     background-color: #4CAF50;
                     color: white;
-                }}}}
-                .bytter {{{{
+                }}
+                .bytter {{
                     position: absolute;
                     top: -80px;
                     left: 0;
@@ -473,49 +473,218 @@ def lag_fotballbane_html(
                     display: flex;
                     justify-content: center;
                     font-size: 14px;
-                }}}}
+                }}
             </style>
+            <script>
+            // Throttle-funksjon for å begrense antall kall
+            function throttle(func, limit) {
+                let inThrottle;
+                return function() {
+                    const args = arguments;
+                    const context = this;
+                    if (!inThrottle) {
+                        func.apply(context, args);
+                        inThrottle = true;
+                        setTimeout(() => inThrottle = false, limit);
+                    }
+                };
+            }
+            
+            function getSpillerPosisjoner() {
+                const spillere = document.querySelectorAll('.spiller:not(.paa-benken)');
+                const posisjoner = {};
+                const bane = document.querySelector('.fotballbane');
+                const baneRect = bane.getBoundingClientRect();
+                const margin = {1};
+
+                // Beregn det spillbare området
+                const spillbartWidth = baneRect.width - 2 * margin;
+                const spillbartHeight = baneRect.height - 2 * margin;
+
+                spillere.forEach(spiller => {{
+                    const rect = spiller.getBoundingClientRect();
+                    const spillerId = spiller.getAttribute('data-spiller-id');
+
+                    // Beregn senterpunkt for spilleren
+                    const spillerSenterX = rect.left + rect.width/2;
+                    const spillerSenterY = rect.top + rect.height/2;
+
+                    // Beregn relativ posisjon fra banens venstre/topp kant
+                    const relativeX = spillerSenterX - baneRect.left - margin;
+                    const relativeY = spillerSenterY - baneRect.top - margin;
+
+                    // Konverter til prosent av spillbart område
+                    const x = (relativeX / spillbartWidth) * 100;
+                    const y = (relativeY / spillbartHeight) * 100;
+
+                    posisjoner[spillerId] = {{
+                        x: Math.max(0, Math.min(100, x)).toFixed(2),
+                        y: Math.max(0, Math.min(100, y)).toFixed(2)
+                    }};
+                }});
+
+                const periode_id = bane.getAttribute('data-periode-id');
+                return posisjoner;
+            }}
+
+            function lagrePosisjoner() {
+                const posisjoner = getSpillerPosisjoner();
+                const bane = document.querySelector('.fotballbane');
+                const periode_id = bane.getAttribute('data-periode-id');
+
+                console.log('Lagrer posisjoner:', periode_id, posisjoner);
+
+                // Send data til Streamlit via URL-parameter
+                const data = {{
+                    periode_id: periode_id,
+                    posisjoner: posisjoner
+                }};
+
+                // Oppdater URL med data
+                const searchParams = new URLSearchParams(window.parent.location.search);
+                searchParams.set('banekart_data', JSON.stringify(data));
+                const newUrl = window.parent.location.pathname + '?' + searchParams.toString();
+                window.parent.history.pushState({}, '', newUrl);
+
+                // Trigger en Streamlit rerun
+                window.parent.postMessage({{
+                    type: 'streamlit:setUrlInfo',
+                    queryParams: Object.fromEntries(searchParams)
+                }}, '*');
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                const spillere = document.querySelectorAll('.spiller');
+                let aktivSpiller = null;
+                let startX = 0;
+                let startY = 0;
+                let offsetX = 0;
+                let offsetY = 0;
+                let lastX = 0;
+                let lastY = 0;
+
+                spillere.forEach(spiller => {{
+                    spiller.addEventListener('mousedown', startDrag);
+                    spiller.addEventListener('touchstart', startDrag, {{ passive: false }});
+                }});
+
+                function startDrag(e) {
+                    e.preventDefault();
+                    aktivSpiller = this;
+                    aktivSpiller.classList.add('dragging');
+
+                    if (e.type === 'mousedown') {
+                        startX = e.clientX;
+                        startY = e.clientY;
+                    } else {
+                        startX = e.touches[0].clientX;
+                        startY = e.touches[0].clientY;
+                    }
+
+                    const style = window.getComputedStyle(aktivSpiller);
+                    offsetX = parseFloat(style.left) || 0;
+                    offsetY = parseFloat(style.top) || 0;
+                    
+                    // Lagre siste posisjon for å beregne delta
+                    lastX = startX;
+                    lastY = startY;
+
+                    document.addEventListener('mousemove', throttledDrag);
+                    document.addEventListener('touchmove', throttledDrag, {{ passive: false }});
+                    document.addEventListener('mouseup', stopDrag);
+                    document.addEventListener('touchend', stopDrag);
+                }
+
+                const throttledDrag = throttle(drag, 16); // Ca. 60fps
+
+                function drag(e) {
+                    if (!aktivSpiller) return;
+                    e.preventDefault();
+
+                    let clientX, clientY;
+                    if (e.type === 'mousemove') {
+                        clientX = e.clientX;
+                        clientY = e.clientY;
+                    } else {
+                        clientX = e.touches[0].clientX;
+                        clientY = e.touches[0].clientY;
+                    }
+
+                    // Beregn delta fra siste posisjon i stedet for startposisjon
+                    // Dette gir mer presis bevegelse
+                    const dx = clientX - lastX;
+                    const dy = clientY - lastY;
+                    
+                    // Oppdater siste posisjon
+                    lastX = clientX;
+                    lastY = clientY;
+
+                    // Oppdater posisjon med delta
+                    offsetX += dx;
+                    offsetY += dy;
+                    
+                    aktivSpiller.style.left = `${offsetX}px`;
+                    aktivSpiller.style.top = `${offsetY}px`;
+                }
+
+                function stopDrag(e) {
+                    if (aktivSpiller) {
+                        aktivSpiller.classList.remove('dragging');
+                        
+                        // Lagre posisjoner bare når dragging er ferdig
+                        lagrePosisjoner();
+                        
+                        aktivSpiller = null;
+                    }
+
+                    document.removeEventListener('mousemove', throttledDrag);
+                    document.removeEventListener('touchmove', throttledDrag);
+                    document.removeEventListener('mouseup', stopDrag);
+                    document.removeEventListener('touchend', stopDrag);
+                }
+            });
+            </script>
         </head>
         <body>
             <div class="fotballbane"
-                 data-periode-id="{{2}}"
-                 style="width: {{3}}px; height: {{4}}px;">
-                {{5}}
-                {{6}}
-                <svg width="{{3}}" height="{{4}}" viewBox="0 0 {{3}} {{4}}" xmlns="http://www.w3.org/2000/svg">
+                 data-periode-id="{2}"
+                 style="width: {3}px; height: {4}px;">
+                {5}
+                {6}
+                <svg width="{3}" height="{4}" viewBox="0 0 {3} {4}" xmlns="http://www.w3.org/2000/svg">
                     <!-- Ytre ramme -->
-                    <rect x="{{1}}"
-                          y="{{1}}"
-                          width="{{7}}"
-                          height="{{8}}"
+                    <rect x="{1}"
+                          y="{1}"
+                          width="{7}"
+                          height="{8}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Midtlinje -->
-                    <line x1="{{1}}"
-                          y1="{{9}}"
-                          x2="{{7}}"
-                          y2="{{9}}"
+                    <line x1="{1}"
+                          y1="{9}"
+                          x2="{7}"
+                          y2="{9}"
                           stroke="white" stroke-width="2"/>
 
                     <!-- Midtsirkel -->
-                    <circle cx="{{10}}" cy="{{9}}" r="100"
+                    <circle cx="{10}" cy="{9}" r="100"
                             fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Øvre 16-meter -->
-                    <rect x="{{11}}"
-                          y="{{1}}"
-                          width="{{12}}"
-                          height="{{13}}"
+                    <rect x="{11}"
+                          y="{1}"
+                          width="{12}"
+                          height="{13}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Nedre 16-meter -->
-                    <rect x="{{11}}"
-                          y="{{14}}"
-                          width="{{12}}"
-                          height="{{13}}"
+                    <rect x="{11}"
+                          y="{14}"
+                          width="{12}"
+                          height="{13}"
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
-                {{15}}
+                {15}
             </div>
         </body>
         </html>
