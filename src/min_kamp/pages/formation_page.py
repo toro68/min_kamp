@@ -368,8 +368,8 @@ def lag_fotballbane_html(
             '<div style="position:absolute;top:10px;left:10px;'
             "background-color:rgba(255,255,255,0.9);padding:5px 10px;"
             'border-radius:5px;font-weight:bold;z-index:1000">'
-            "Periode {} ({}-{} min)<br>"
-            "Bytter denne perioden: {}"
+            "Periode {0} ({1}-{2} min)<br>"
+            "Bytter denne perioden: {3}"
             "</div>"
         ).format(periode_nummer, start_minutt, slutt_minutt, bytter_tekst)
 
@@ -399,8 +399,8 @@ def lag_fotballbane_html(
                     user-select: none;
                     -webkit-user-select: none;
                     background-color: #2e8b57;
-                    width: {3}px;
-                    height: {4}px;
+                    width: {{3}}px;
+                    height: {{4}}px;
                 }}
                 .straffeomraade {{
                     position: absolute;
@@ -509,7 +509,7 @@ def lag_fotballbane_html(
                 const posisjoner = {{}};
                 const bane = document.querySelector('.fotballbane');
                 const baneRect = bane.getBoundingClientRect();
-                const margin = {1};
+                const margin = {{1}};
 
                 // Beregn det spillbare området
                 const spillbartWidth = baneRect.width - 2 * margin;
@@ -661,40 +661,40 @@ def lag_fotballbane_html(
         </head>
         <body>
             <div class="fotballbane"
-                 data-periode-id="{2}"
-                 style="width: {3}px; height: {4}px;">
-                {5}
-                {6}
-                <svg width="{3}" height="{4}">
+                 data-periode-id="{{2}}"
+                 style="width: {{3}}px; height: {{4}}px;">
+                {{5}}
+                {{6}}
+                <svg width="{{3}}" height="{{4}}">
                     <!-- Ytre ramme -->
-                    <rect x="{1}" y="{1}"
-                          width="{7}" height="{8}"
+                    <rect x="{{1}}" y="{{1}}"
+                          width="{{7}}" height="{{8}}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Midtlinje -->
-                    <line x1="{1}" y1="{9}"
-                          x2="{7}" y2="{9}"
+                    <line x1="{{1}}" y1="{{9}}"
+                          x2="{{7}}" y2="{{9}}"
                           stroke="white" stroke-width="2"/>
 
                     <!-- Midtsirkel -->
-                    <circle cx="{10}" cy="{9}" r="100"
+                    <circle cx="{{10}}" cy="{{9}}" r="100"
                             fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Øvre 16-meter -->
-                    <rect x="{11}"
-                          y="{1}"
-                          width="{12}"
-                          height="{13}"
+                    <rect x="{{11}}"
+                          y="{{1}}"
+                          width="{{12}}"
+                          height="{{13}}"
                           fill="none" stroke="white" stroke-width="2"/>
 
                     <!-- Nedre 16-meter -->
-                    <rect x="{11}"
-                          y="{14}"
-                          width="{12}"
-                          height="{13}"
+                    <rect x="{{11}}"
+                          y="{{14}}"
+                          width="{{12}}"
+                          height="{{13}}"
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
-                {15}
+                {{15}}
             </div>
         </body>
         </html>
