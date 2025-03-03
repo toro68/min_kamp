@@ -20,7 +20,9 @@ class DatabaseHandler:
         self.database_path = database_path
         self._connection_count = 0
         self._lock = threading.Lock()
-        logging.info(f"DatabaseHandler initialisert med database: {database_path}")
+        logging.debug(
+            f"DatabaseHandler initialisert med database: {database_path}"
+        )
 
     @contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -54,16 +56,22 @@ class DatabaseHandler:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA synchronous=NORMAL")  # Bedre ytelse
             conn.execute("PRAGMA busy_timeout=5000")  # 5 sekunder timeout
-            conn.execute("PRAGMA temp_store=MEMORY")  # Bruk minne for temp data
+            conn.execute(
+                "PRAGMA temp_store=MEMORY"
+            )  # Bruk minne for temp data
             conn.execute("PRAGMA cache_size=-2000")  # 2MB cache
             conn.execute("PRAGMA mmap_size=268435456")  # 256MB mmap
 
-            logging.debug(f"[CONN-{conn_id}][Thread-{thread_id}] Tilkobling etablert")
+            logging.debug(
+                f"[CONN-{conn_id}][Thread-{thread_id}] Tilkobling etablert"
+            )
 
             try:
                 yield conn
                 conn.commit()
-                logging.debug(f"[CONN-{conn_id}][Thread-{thread_id}] Endringer lagret")
+                logging.debug(
+                    f"[CONN-{conn_id}][Thread-{thread_id}] Endringer lagret"
+                )
             except Exception as e:
                 conn.rollback()
                 error_trace = (
@@ -76,7 +84,9 @@ class DatabaseHandler:
                 raise
             finally:
                 conn.close()
-                logging.debug(f"[CONN-{conn_id}][Thread-{thread_id}] Tilkobling lukket")
+                logging.debug(
+                    f"[CONN-{conn_id}][Thread-{thread_id}] Tilkobling lukket"
+                )
 
         except sqlite3.Error as e:
             error_trace = (
@@ -89,7 +99,10 @@ class DatabaseHandler:
             raise
 
     def execute_query(
-        self, query: str, params: Optional[Tuple] = None, fetch_one: bool = False
+        self,
+        query: str,
+        params: Optional[Tuple] = None,
+        fetch_one: bool = False,
     ) -> Any:
         """Utfører en SQL spørring og returnerer resultatene."""
         with self.connection() as conn:
@@ -114,7 +127,9 @@ class DatabaseHandler:
                 logging.error(error_trace)
                 raise
 
-    def execute_update(self, query: str, params: Optional[Tuple] = None) -> int:
+    def execute_update(
+        self, query: str, params: Optional[Tuple] = None
+    ) -> int:
         """Utfører en SQL oppdatering og returnerer antall påvirkede rader."""
         with self.connection() as conn:
             cursor = conn.cursor()
@@ -136,7 +151,9 @@ class DatabaseHandler:
                 logging.error(error_trace)
                 raise
 
-    def execute_transaction(self, queries: List[Tuple[str, Optional[Tuple]]]) -> None:
+    def execute_transaction(
+        self, queries: List[Tuple[str, Optional[Tuple]]]
+    ) -> None:
         """Utfører flere SQL-operasjoner i én transaksjon."""
         with self.connection() as conn:
             cursor = conn.cursor()
