@@ -2,7 +2,9 @@
 Pages pakke.
 """
 
-from min_kamp.pages.formation_page import vis_formasjon_side
+from min_kamp.pages.formation_page import (
+    vis_periodevis_oversikt as vis_formasjon_side,
+)
 from min_kamp.pages.kamp_page import vis_kamp_side
 from min_kamp.pages.kamptropp_page import vis_kamptropp_side
 from min_kamp.pages.login_page import vis_login_side

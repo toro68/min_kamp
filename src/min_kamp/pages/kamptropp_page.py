@@ -232,7 +232,9 @@ def slett_spiller_helt(
             if bekreftet_slettet:
                 st.success("Spilleren er fullstendig fjernet")
                 logger.info(
-                    "Spiller %s fullstendig fjernet fra kamp %s", spiller_id, kamp_id
+                    "Spiller %s fullstendig fjernet fra kamp %s",
+                    spiller_id,
+                    kamp_id,
                 )
                 return True
             else:
@@ -304,8 +306,14 @@ def vis_spillere(
                             app_handler, kamp_id, spiller["id"]
                         ):
                             st.success(f"Spilleren {spiller['navn']} fjernet")
+                            logger.debug(
+                                f"Spiller {spiller['navn']} (ID: {spiller['id']}) fjernet fra kamptropp"
+                            )
                         else:
                             st.error(f"Kunne ikke fjerne spilleren {spiller['navn']}")
+                            logger.error(
+                                f"Kunne ikke fjerne spiller {spiller['navn']} (ID: {spiller['id']}) fra kamptropp"
+                            )
                     else:
                         # Legg til spiller i kamptropp (hvis ikke allerede med)
                         try:
@@ -328,6 +336,23 @@ def vis_spillere(
                                     )
 
                                 conn.commit()
+
+                                # Verifiser at endringen ble lagret
+                                cursor.execute(
+                                    "SELECT er_med FROM kamptropp "
+                                    "WHERE kamp_id = ? AND spiller_id = ?",
+                                    (kamp_id, spiller["id"]),
+                                )
+                                result = cursor.fetchone()
+                                if result and result[0] == 1:
+                                    logger.debug(
+                                        f"Spiller {spiller['navn']} (ID: {spiller['id']}) lagt til i kamptropp, er_med = 1"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Spiller {spiller['navn']} (ID: {spiller['id']}) ble ikke riktig lagret i kamptropp, er_med = {result[0] if result else 'None'}"
+                                    )
+
                             st.success(f"Spilleren {spiller['navn']} lagt til")
                         except Exception as e:
                             logger.error(f"Feil ved legge til spiller: {e}")
@@ -422,11 +447,16 @@ def vis_kamptropp_side(app_handler: AppHandler) -> None:
                     try:
                         bruker_id = get_bruker_id()
                         spiller_id = opprett_spiller(
-                            app_handler, bruker_id, spiller_navn, spiller_posisjon
+                            app_handler,
+                            bruker_id,
+                            spiller_navn,
+                            spiller_posisjon,
                         )
                         if spiller_id:
                             logger.info(
-                                "Opprettet spiller %s: %s", spiller_id, spiller_navn
+                                "Opprettet spiller %s: %s",
+                                spiller_id,
+                                spiller_navn,
                             )
                             st.success("Spiller opprettet!")
                             time.sleep(1)
@@ -468,6 +498,11 @@ def vis_kamptropp_side(app_handler: AppHandler) -> None:
             for spiller in spillere:
                 if spiller["er_med"]:
                     valgte_spillere.add(spiller["id"])
+
+        # Logg antall valgte spillere for debugging
+        logger.debug("Antall valgte spillere: %d", len(valgte_spillere))
+        logger.debug("Valgte spillere IDs: %s", valgte_spillere)
+
         vis_valgt_tropp(kamptropp, valgte_spillere)
 
     except Exception as e:
