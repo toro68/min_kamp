@@ -12,6 +12,14 @@ from pathlib import Path
 
 import streamlit as st
 
+# Sett opp Streamlit-siden - må være første Streamlit-kommando
+st.set_page_config(
+    page_title="Min Kamp",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 # Legg til prosjektmappen og src-mappen i Python-stien
 project_root = str(Path(__file__).parent)
 src_path = os.path.join(project_root, "src")
@@ -83,14 +91,6 @@ app_handler = AppHandler(db_handler)
 logging.debug("Kjører migrasjoner...")
 kjor_migrasjoner(db_handler, migrasjoner_mappe)
 logging.debug("Migrasjoner fullført")
-
-# Sett opp Streamlit-siden
-st.set_page_config(
-    page_title="Min Kamp",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # Sjekk autentisering
 logging.debug("Sjekker autentisering...")
