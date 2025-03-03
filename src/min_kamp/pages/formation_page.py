@@ -114,7 +114,9 @@ def lagre_formasjon(
     # Valider at alle posisjoner er gyldige
     for spiller_id, posisjon in posisjoner.items():
         if posisjon not in POSISJONER:
-            logger.error("Ugyldig posisjon for spiller %s: %s", spiller_id, posisjon)
+            logger.error(
+                "Ugyldig posisjon for spiller %s: %s", spiller_id, posisjon
+            )
             return False
 
     try:
@@ -130,7 +132,9 @@ def lagre_formasjon(
                     (posisjon, kamp_id, spiller_id),
                 )
             conn.commit()
-            logger.info("Formasjon lagret for kamp %s, periode %s", kamp_id, periode_id)
+            logger.info(
+                "Formasjon lagret for kamp %s, periode %s", kamp_id, periode_id
+            )
             return True
     except Exception as e:
         logger.error("Feil ved lagring av formasjon: %s", e)
@@ -138,7 +142,9 @@ def lagre_formasjon(
         return False
 
 
-def hent_lagret_formasjon(app_handler: AppHandler, kamp_id: int) -> Optional[Dict]:
+def hent_lagret_formasjon(
+    app_handler: AppHandler, kamp_id: int
+) -> Optional[Dict]:
     """Henter lagret formasjon for kampen.
 
     Args:
@@ -236,7 +242,8 @@ def lag_fotballbane_html(
             for spiller in spillere_liste:
                 spillere_dict[spiller["navn"]] = {
                     "perioder": {
-                        p: {"er_paa": False, "sist_oppdatert": None} for p in range(10)
+                        p: {"er_paa": False, "sist_oppdatert": None}
+                        for p in range(10)
                     },  # Støtt flere perioder
                     "id": spiller["id"],
                 }
@@ -259,11 +266,15 @@ def lag_fotballbane_html(
                 if app_handler is not None and kamp_id is not None:
                     for p_id in range(periode + 1):
                         paa_banen_temp, paa_benken_temp = (
-                            hent_alle_spillere_for_periode(app_handler, p_id, kamp_id)
+                            hent_alle_spillere_for_periode(
+                                app_handler, p_id, kamp_id
+                            )
                         )
                         for spiller in paa_banen_temp + paa_benken_temp:
                             if spiller["navn"] in spillere_dict:
-                                spillere_dict[spiller["navn"]]["perioder"][p_id] = {
+                                spillere_dict[spiller["navn"]]["perioder"][
+                                    p_id
+                                ] = {
                                     "er_paa": spiller in paa_banen_temp,
                                     "sist_oppdatert": datetime.now().isoformat(),
                                 }
@@ -281,10 +292,14 @@ def lag_fotballbane_html(
 
         for spiller, pos in zip(spillere_liste, posisjoner):
             if not isinstance(pos, tuple) or len(pos) != 2:
-                logger.warning(f"Ugyldig posisjon for spiller {spiller['id']}: {pos}")
+                logger.warning(
+                    f"Ugyldig posisjon for spiller {spiller['id']}: {pos}"
+                )
                 continue
 
-            x, y = beregn_spiller_posisjon(pos[0], pos[1], width, height, margin)
+            x, y = beregn_spiller_posisjon(
+                pos[0], pos[1], width, height, margin
+            )
 
             # Legg til CSS-klasse for spillere som byttes inn
             byttet_inn_klasse = ""
@@ -314,9 +329,15 @@ def lag_fotballbane_html(
     # Generer periode og bytter info HTML
     periode_html = ""
     bytter_html = ""
-    if periode_id is not None and kamp_id is not None and app_handler is not None:
+    if (
+        periode_id is not None
+        and kamp_id is not None
+        and app_handler is not None
+    ):
         # Hent kampinnstillinger
-        kamplengde, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
+        kamplengde, antall_perioder, _ = _hent_kampinnstillinger(
+            app_handler, kamp_id
+        )
         periode_nummer = periode_id + 1  # Konverter til 1-basert
 
         # Beregn periodelengde og minutter
@@ -442,6 +463,8 @@ def lag_fotballbane_html(
                     z-index: 1000;
                     box-sizing: border-box;
                     transform: translate(-50%, -50%);
+                    touch-action: none;
+                    transition: box-shadow 0.2s, transform 0.2s;
                 }}
                 .spiller:hover {{
                     transform: scale(1.1);
@@ -467,7 +490,21 @@ def lag_fotballbane_html(
                 }}
             </style>
             <script>
-            function getSpillerPosisjoner() {{
+            // Throttle-funksjon for å begrense antall kall
+            function throttle(func, limit) {
+                let inThrottle;
+                return function() {
+                    const args = arguments;
+                    const context = this;
+                    if (!inThrottle) {
+                        func.apply(context, args);
+                        inThrottle = true;
+                        setTimeout(() => inThrottle = false, limit);
+                    }
+                };
+            }
+            
+            function getSpillerPosisjoner() {
                 const spillere = document.querySelectorAll('.spiller:not(.paa-benken)');
                 const posisjoner = {{}};
                 const bane = document.querySelector('.fotballbane');
@@ -504,7 +541,7 @@ def lag_fotballbane_html(
                 return posisjoner;
             }}
 
-            function lagrePosisjoner() {{
+            function lagrePosisjoner() {
                 const posisjoner = getSpillerPosisjoner();
                 const bane = document.querySelector('.fotballbane');
                 const periode_id = bane.getAttribute('data-periode-id');
@@ -528,76 +565,98 @@ def lag_fotballbane_html(
                     type: 'streamlit:setUrlInfo',
                     queryParams: Object.fromEntries(searchParams)
                 }}, '*');
-            }}
+            }
 
-            document.addEventListener('DOMContentLoaded', function() {{
+            document.addEventListener('DOMContentLoaded', function() {
                 const spillere = document.querySelectorAll('.spiller');
                 let aktivSpiller = null;
                 let startX = 0;
                 let startY = 0;
                 let offsetX = 0;
                 let offsetY = 0;
+                let lastX = 0;
+                let lastY = 0;
 
-                spillere.forEach(spiller => {{
+                spillere.forEach(spiller => {
                     spiller.addEventListener('mousedown', startDrag);
-                    spiller.addEventListener('touchstart', startDrag);
-                }});
+                    spiller.addEventListener('touchstart', startDrag, { passive: false });
+                });
 
-                function startDrag(e) {{
+                function startDrag(e) {
                     e.preventDefault();
                     aktivSpiller = this;
                     aktivSpiller.classList.add('dragging');
 
-                    if (e.type === 'mousedown') {{
+                    if (e.type === 'mousedown') {
                         startX = e.clientX;
                         startY = e.clientY;
-                    }} else {{
+                    } else {
                         startX = e.touches[0].clientX;
                         startY = e.touches[0].clientY;
-                    }}
+                    }
 
                     const style = window.getComputedStyle(aktivSpiller);
                     offsetX = parseFloat(style.left) || 0;
                     offsetY = parseFloat(style.top) || 0;
+                    
+                    // Lagre siste posisjon for å beregne delta
+                    lastX = startX;
+                    lastY = startY;
 
-                    document.addEventListener('mousemove', drag);
-                    document.addEventListener('touchmove', drag);
+                    document.addEventListener('mousemove', throttledDrag);
+                    document.addEventListener('touchmove', throttledDrag, { passive: false });
                     document.addEventListener('mouseup', stopDrag);
                     document.addEventListener('touchend', stopDrag);
-                }}
+                }
 
-                function drag(e) {{
+                const throttledDrag = throttle(drag, 16); // Ca. 60fps
+
+                function drag(e) {
                     if (!aktivSpiller) return;
+                    e.preventDefault();
 
                     let clientX, clientY;
-                    if (e.type === 'mousemove') {{
+                    if (e.type === 'mousemove') {
                         clientX = e.clientX;
                         clientY = e.clientY;
-                    }} else {{
+                    } else {
                         clientX = e.touches[0].clientX;
                         clientY = e.touches[0].clientY;
-                    }}
+                    }
 
-                    const dx = clientX - startX;
-                    const dy = clientY - startY;
+                    // Beregn delta fra siste posisjon i stedet for startposisjon
+                    // Dette gir mer presis bevegelse
+                    const dx = clientX - lastX;
+                    const dy = clientY - lastY;
+                    
+                    // Oppdater siste posisjon
+                    lastX = clientX;
+                    lastY = clientY;
 
-                    aktivSpiller.style.left = `${{offsetX + dx}}px`;
-                    aktivSpiller.style.top = `${{offsetY + dy}}px`;
-                }}
+                    // Oppdater posisjon med delta
+                    offsetX += dx;
+                    offsetY += dy;
+                    
+                    aktivSpiller.style.left = `${offsetX}px`;
+                    aktivSpiller.style.top = `${offsetY}px`;
+                }
 
-                function stopDrag() {{
-                    if (aktivSpiller) {{
+                function stopDrag(e) {
+                    if (aktivSpiller) {
                         aktivSpiller.classList.remove('dragging');
-                        aktivSpiller = null;
+                        
+                        // Lagre posisjoner bare når dragging er ferdig
                         lagrePosisjoner();
-                    }}
+                        
+                        aktivSpiller = null;
+                    }
 
-                    document.removeEventListener('mousemove', drag);
-                    document.removeEventListener('touchmove', drag);
+                    document.removeEventListener('mousemove', throttledDrag);
+                    document.removeEventListener('touchmove', throttledDrag);
                     document.removeEventListener('mouseup', stopDrag);
                     document.removeEventListener('touchend', stopDrag);
-                }}
-            }});
+                }
+            });
             </script>
         </head>
         <body>
@@ -738,7 +797,9 @@ def get_available_formations() -> Dict[str, Dict]:
     }
 
 
-def hent_bytteplanperioder(app_handler: AppHandler, kamp_id: int) -> List[Dict]:
+def hent_bytteplanperioder(
+    app_handler: AppHandler, kamp_id: int
+) -> List[Dict]:
     """Henter alle perioder fra bytteplanen."""
     logger.debug("Henter perioder for kamp %s", kamp_id)
 
@@ -831,7 +892,9 @@ def hent_alle_spillere_for_periode(
     app_handler: AppHandler, periode_id: int, kamp_id: int
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Henter alle spillere for en periode, både på banen og på benken."""
-    logger.debug("Henter alle spillere for periode %s i kamp %s", periode_id, kamp_id)
+    logger.debug(
+        "Henter alle spillere for periode %s i kamp %s", periode_id, kamp_id
+    )
 
     try:
         with app_handler._database_handler.connection() as conn:
@@ -888,7 +951,9 @@ def hent_alle_spillere_for_periode(
                 periode_id,
             )
 
-            logger.debug("Hentet %d spillere på banen for periode 0", len(paa_banen))
+            logger.debug(
+                "Hentet %d spillere på banen for periode 0", len(paa_banen)
+            )
 
             logger.debug(
                 "Fant %d spillere på banen og %d på benken",
@@ -960,7 +1025,9 @@ def lag_png(
                 )
                 kamp_data = cursor.fetchone()
                 dato = (
-                    kamp_data[0] if kamp_data else datetime.now().strftime("%Y-%m-%d")
+                    kamp_data[0]
+                    if kamp_data
+                    else datetime.now().strftime("%Y-%m-%d")
                 )
             except Exception as db_error:
                 logger.warning(
@@ -987,7 +1054,9 @@ def lag_png(
         # Bruk nedlastingsmappen i stedet for temp-mappen
         download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         if not os.path.exists(download_dir):
-            logger.warning("Nedlastingsmappe ikke funnet, bruker temp-mappe i stedet")
+            logger.warning(
+                "Nedlastingsmappe ikke funnet, bruker temp-mappe i stedet"
+            )
             download_dir = tempfile.gettempdir()
 
         logger.debug("Bruker nedlastingsmappe: %s", download_dir)
@@ -1000,7 +1069,9 @@ def lag_png(
         file_name = f"formation_{kamp_id}_{periode_id}.png"
         output_path = os.path.join(download_dir, file_name)
         # Logg før screenshot-kallet
-        logger.info("Starter screenshot for kamp %s, periode %s", kamp_id, periode_id)
+        logger.info(
+            "Starter screenshot for kamp %s, periode %s", kamp_id, periode_id
+        )
         # Ekstra debug logging for html_content
         html_preview = html_content[:100] if html_content else ""
         logger.debug(
@@ -1011,7 +1082,9 @@ def lag_png(
         # Bruker en fast størrelse (1000x1000); denne kan tilpasses om nødvendig
         try:
             logger.debug("Starter screenshot med Html2Image...")
-            hti.screenshot(html_str=html_content, save_as=file_name, size=(1000, 1000))
+            hti.screenshot(
+                html_str=html_content, save_as=file_name, size=(1000, 1000)
+            )
             logger.debug("Screenshot-kall fullført")
         except Exception as e:
             logger.exception("Feil under screenshot-generering: %s", e)
@@ -1020,7 +1093,9 @@ def lag_png(
         # Logg etter screenshot-kallet
         logger.info("Screenshot fullført, sjekker fil: %s", output_path)
         if os.path.exists(output_path):
-            logger.info("PNG generert for kamp %s, periode %s", kamp_id, periode_id)
+            logger.info(
+                "PNG generert for kamp %s, periode %s", kamp_id, periode_id
+            )
             # Vis melding til brukeren om hvor filen ble lagret
             st.success(f"PNG lagret i nedlastingsmappen: {output_path}")
             return output_path
@@ -1029,7 +1104,9 @@ def lag_png(
                 "PNG-generering feilet: filen %s ble ikke funnet etter screenshot",
                 output_path,
             )
-            st.error("Kunne ikke generere PNG-fil. Sjekk loggene for detaljer.")
+            st.error(
+                "Kunne ikke generere PNG-fil. Sjekk loggene for detaljer."
+            )
             return None
     except Exception as e:
         logger.error("Feil ved generering av PNG: %s", e)
@@ -1037,7 +1114,9 @@ def lag_png(
         return None
 
 
-def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) -> bool:
+def lagre_grunnformasjon(
+    app_handler: AppHandler, kamp_id: int, formasjon: str
+) -> bool:
     """Lagrer grunnformasjon for kampen og spillerposisjoner i banekartet."""
     try:
         logger.debug("=== Start lagre_grunnformasjon ===")
@@ -1045,11 +1124,15 @@ def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) 
 
         # Valider input
         if not isinstance(kamp_id, int) or kamp_id <= 0:
-            logger.error("Ugyldig kamp_id: %s (type: %s)", kamp_id, type(kamp_id))
+            logger.error(
+                "Ugyldig kamp_id: %s (type: %s)", kamp_id, type(kamp_id)
+            )
             return False
 
         if not formasjon or not isinstance(formasjon, str):
-            logger.error("Ugyldig formasjon: %s (type: %s)", formasjon, type(formasjon))
+            logger.error(
+                "Ugyldig formasjon: %s (type: %s)", formasjon, type(formasjon)
+            )
             return False
 
         bruker_id_str = st.query_params.get("bruker_id")
@@ -1098,7 +1181,9 @@ def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) 
 
                 if not paa_banen:
                     logger.warning("Ingen spillere funnet på banen")
-                    return True  # Returnerer True siden grunnformasjon ble lagret
+                    return (
+                        True  # Returnerer True siden grunnformasjon ble lagret
+                    )
 
                 # Hent posisjoner fra valgt formasjon
                 formations = get_available_formations()
@@ -1122,7 +1207,9 @@ def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) 
                             "x": pos[0],
                             "y": pos[1],
                         }
-                logger.debug("Opprettet spillerposisjoner: %s", spillerposisjoner)
+                logger.debug(
+                    "Opprettet spillerposisjoner: %s", spillerposisjoner
+                )
 
                 # Lagre spillerposisjoner i banekart tabellen
                 if spillerposisjoner:
@@ -1164,7 +1251,9 @@ def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) 
                             raise
 
                     except Exception as e:
-                        logger.error("Feil ved lagring av banekart: %s", str(e))
+                        logger.error(
+                            "Feil ved lagring av banekart: %s", str(e)
+                        )
                         logger.error("SQL state: %s", e.__class__.__name__)
                         conn.rollback()
                         return False
@@ -1185,7 +1274,9 @@ def lagre_grunnformasjon(app_handler: AppHandler, kamp_id: int, formasjon: str) 
         return False
 
 
-def hent_grunnformasjon(app_handler: AppHandler, kamp_id: int) -> Optional[str]:
+def hent_grunnformasjon(
+    app_handler: AppHandler, kamp_id: int
+) -> Optional[str]:
     """Henter lagret grunnformasjon for kampen."""
     logger.debug("Henter grunnformasjon for kamp %s", kamp_id)
 
@@ -1208,7 +1299,9 @@ def hent_grunnformasjon(app_handler: AppHandler, kamp_id: int) -> Optional[str]:
             row = cursor.fetchone()
 
             if row:
-                logger.info("Fant grunnformasjon for kamp %s: %s", kamp_id, row[0])
+                logger.info(
+                    "Fant grunnformasjon for kamp %s: %s", kamp_id, row[0]
+                )
             else:
                 logger.info("Ingen grunnformasjon funnet for kamp %s", kamp_id)
 
@@ -1305,7 +1398,9 @@ def _hent_kampinnstillinger(
                     )
 
                 # Deretter bruker-spesifikke
-                elif rad_bruker_id == bruker_id and nokkel not in innstillinger:
+                elif (
+                    rad_bruker_id == bruker_id and nokkel not in innstillinger
+                ):
                     innstillinger[nokkel] = verdi
                     logger.debug(
                         f"DEBUG: Valgt bruker-spesifikk innstilling: {nokkel} = {verdi}"
@@ -1323,7 +1418,8 @@ def _hent_kampinnstillinger(
 
             # Logg innstillingene
             logger.info(
-                "Kampinnstillinger for kamp %s: lengde=%s, " "perioder=%s, spillere=%s",
+                "Kampinnstillinger for kamp %s: lengde=%s, "
+                "perioder=%s, spillere=%s",
                 kamp_id,
                 kamplengde,
                 antall_perioder,
@@ -1388,7 +1484,9 @@ def hent_bytter_for_periode(
                         inn = endringer[j][0]  # navn
 
                 if ut and inn:
-                    bytter.append({"ut": ut, "inn": inn, "tidspunkt": endringer[i][2]})
+                    bytter.append(
+                        {"ut": ut, "inn": inn, "tidspunkt": endringer[i][2]}
+                    )
 
             logger.info(
                 "Fant %d bytter for periode %d i kamp %d",
@@ -1406,7 +1504,9 @@ def hent_bytter_for_periode(
 def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
     """Viser oversikt over formasjoner per periode."""
     # Hent kampinnstillinger først
-    kamplengde, antall_perioder, _ = _hent_kampinnstillinger(app_handler, kamp_id)
+    kamplengde, antall_perioder, _ = _hent_kampinnstillinger(
+        app_handler, kamp_id
+    )
 
     # Beregn periodelengde
     periode_lengde = kamplengde / antall_perioder
@@ -1434,7 +1534,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
         )
 
     if not perioder:
-        st.warning("Ingen perioder funnet i bytteplanen. Opprett bytteplan først.")
+        st.warning(
+            "Ingen perioder funnet i bytteplanen. Opprett bytteplan først."
+        )
         if st.button("Gå til bytteplan"):
             st.query_params["page"] = "bytteplan"
             st.rerun()
@@ -1588,8 +1690,12 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                 # Hent og vis bytter for perioden
                 try:
                     bytter_inn, bytter_ut = hent_bytter(spillere, periode_id)
-                    logger.debug(f"Periode {periode_id} - Bytter inn: {bytter_inn}")
-                    logger.debug(f"Periode {periode_id} - Bytter ut: {bytter_ut}")
+                    logger.debug(
+                        f"Periode {periode_id} - Bytter inn: {bytter_inn}"
+                    )
+                    logger.debug(
+                        f"Periode {periode_id} - Bytter ut: {bytter_ut}"
+                    )
                     logger.debug(
                         f"Periode {periode_id} - Spillere på banen: {[s['navn'] for s in paa_banen]}"
                     )
@@ -1597,7 +1703,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     # Sjekk hver spiller som skal være byttet inn
                     for spiller_navn in bytter_inn:
                         if any(s["navn"] == spiller_navn for s in paa_banen):
-                            logger.debug(f"Bekrefter at {spiller_navn} er på banen")
+                            logger.debug(
+                                f"Bekrefter at {spiller_navn} er på banen"
+                            )
                         else:
                             logger.warning(
                                 f"Spiller som skulle vært byttet inn er ikke på banen: {spiller_navn}"
@@ -1605,7 +1713,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
 
                     bytter_tekst = formater_bytter(bytter_inn, bytter_ut)
                     if bytter_tekst != "-":
-                        logger.info(f"Bytter i periode {periode_id}: {bytter_tekst}")
+                        logger.info(
+                            f"Bytter i periode {periode_id}: {bytter_tekst}"
+                        )
                 except Exception as e:
                     logger.error(f"Feil ved håndtering av bytter: {str(e)}")
                     bytter_inn = []
@@ -1645,7 +1755,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                         for s in paa_banen
                     ]
                     fotballbane_html = lag_fotballbane_html(
-                        posisjoner=formations[selected_formation]["posisjoner"],
+                        posisjoner=formations[selected_formation][
+                            "posisjoner"
+                        ],
                         spillere_liste=spillere_liste,
                         spillere_paa_benken=paa_benken,
                         kamp_id=kamp_id,
@@ -1678,7 +1790,9 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                     else:
                                         st.error("PNG-generering feilet")
                                 except Exception as e:
-                                    logger.error("Feil ved PNG-generering: %s", str(e))
+                                    logger.error(
+                                        "Feil ved PNG-generering: %s", str(e)
+                                    )
                                     st.error("Feil ved PNG-generering")
                         with cols[1]:
                             if st.button(
@@ -1692,7 +1806,10 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                         app_handler,
                                         kamp_id,
                                         periode["id"],
-                                        {s["id"]: s["navn"] for s in paa_banen},
+                                        {
+                                            s["id"]: s["navn"]
+                                            for s in paa_banen
+                                        },
                                     )
                                     if success:
                                         st.success("Formasjon lagret")
