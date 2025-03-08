@@ -366,7 +366,7 @@ def lag_fotballbane_html(
                 const bane = document.querySelector('.fotballbane');
                 const periode_id = bane.getAttribute('data-periode-id');
 
-                console.log('Lagrer posisjoner - periode_id:', periode_id, 'posisjoner:', posisjoner);
+                console.log('Lag posisjon id:', periode_id, 'pos:', posisjoner);
 
                 // Send data til Streamlit via URL-parameter
                 const data = {{
@@ -377,9 +377,10 @@ def lag_fotballbane_html(
                 // Oppdater URL med data, men ikke trigger en full side-refresh
                 const searchParams = new URLSearchParams(window.parent.location.search);
                 searchParams.set('banekart_data', JSON.stringify(data));
-                
+
                 // Bruk fetch API for å sende data til serveren uten å refreshe siden
-                fetch(window.parent.location.pathname + '?' + searchParams.toString(), {{
+                let url = window.parent.location.pathname+'?'+searchParams.toString();
+                fetch(url,{{
                     method: 'GET',
                     headers: {{
                         'Accept': 'application/json',
@@ -390,10 +391,11 @@ def lag_fotballbane_html(
                 }}).catch(error => {{
                     console.error('Feil ved sending av posisjoner:', error);
                 }});
-                
+
                 // Oppdater URL uten å refreshe siden
-                window.parent.history.pushState({{}}, '', window.parent.location.pathname + '?' + searchParams.toString());
-                
+                let url = window.parent.location.pathname+'?'+searchParams.toString();
+                window.parent.history.pushState({{}}, '', url);
+
                 // Send melding til Streamlit uten å trigge full rerun
                 window.parent.postMessage({{
                     type: 'streamlit:setComponentValue',
@@ -1380,7 +1382,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                 selected_formation,
                             )
                             st.success("Formasjon lagret")
-                            logger.debug("Lagring vellykket, men kjører ikke rerun for å unngå flimring")
+                            logger.debug("Lagring ok, ingen rerun (unngår flimring)")
                             # Fjernet st.rerun() for å unngå flimring
                         else:
                             logger.error(
@@ -1419,7 +1421,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                                         st.success("Posisjoner lagret")
                                         # Fjern data fra URL
                                         st.query_params.pop("banekart_data", None)
-                                        st.rerun()
+                                        # Fjernet st.rerun() - direkte DB-skriving, hindrer flimring
                                     else:
                                         st.error("Kunne ikke lagre posisjoner")
                                 else:
@@ -1433,9 +1435,6 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                     except Exception as e:
                         logger.error("Feil ved håndtering av banekart data: %s", str(e))
                         st.error("Kunne ikke håndtere banekart data")
-
-                    # Fjern data fra URL uansett
-                    st.query_params.pop("banekart_data", None)
 
                 # Vis fotballbanen med spillere
                 posisjoner = formations[selected_formation]["posisjoner"]
@@ -1682,9 +1681,6 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data fra URL: %s", str(e))
 
-            # Fjern data fra URL uansett
-            st.query_params.pop("banekart_data", None)
-
         # Hent tilgjengelige formasjoner
         try:
             formations = get_available_formations()
@@ -1727,7 +1723,7 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                     if lagre_grunnformasjon(app_handler, kamp_id, selected_formation):
                         logger.info("Grunnformasjon lagret: %s", selected_formation)
                         st.success("Grunnformasjon lagret")
-                        logger.debug("Lagring vellykket, men kjører ikke rerun for å unngå flimring")
+                        logger.debug("Lagring ok, ingen rerun (unngår flimring)")
                         # Fjernet st.rerun() for å unngå flimring
                     else:
                         logger.error("lagre_grunnformasjon returnerte False")

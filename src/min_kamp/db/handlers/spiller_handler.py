@@ -3,7 +3,7 @@ Håndterer spillerdata i databasen.
 """
 
 import logging
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
 from min_kamp.db.errors import DatabaseError
 from min_kamp.models.spiller_model import Spiller

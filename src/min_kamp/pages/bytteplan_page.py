@@ -112,7 +112,13 @@ def _hent_kampinnstillinger(
             antall_paa_banen,
         )
 
-        logger.info("Kamp: %d, l=%d, p=%d, s=%d", kamp_id, kamplengde, antall_perioder, antall_paa_banen)
+        logger.info(
+            "Kamp: %d, l=%d, p=%d, s=%d",
+            kamp_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
+        )
         return kamplengde, antall_perioder, antall_paa_banen
     except Exception as e:
         logger.error("Feil ved henting av kampinnstillinger: %s", str(e))
@@ -179,7 +185,13 @@ def _lagre_kampinnstillinger(
                 str(antall_paa_banen),
             ),
         )
-        logger.info("Lagret innst for kamp %d: %d, %d, %d", kamp_id, kamplengde, antall_perioder, antall_paa_banen)
+        logger.info(
+            "Lagret innst for kamp %d: %d, %d, %d",
+            kamp_id,
+            kamplengde,
+            antall_perioder,
+            antall_paa_banen,
+        )
     except Exception as e:
         logger.error("Feil ved lagring av kampinnstillinger: %s", str(e))
         st.error(f"Kunne ikke lagre kampinnstillinger: {str(e)}")
@@ -258,10 +270,7 @@ def _vis_bytteplan_oppsummering(
     data = []
     for p_idx, periode in enumerate(perioder):
         # Finn hvem som er på banen og på benken i denne perioden
-        paa_banen = {
-            pos: []
-            for pos in ["Keeper", "Forsvar", "Midtbane", "Angrep"]
-        }
+        paa_banen = {pos: [] for pos in ["Keeper", "Forsvar", "Midtbane", "Angrep"]}
         paa_benken = []
 
         for navn, spiller in spillere.items():
@@ -320,18 +329,10 @@ def _vis_bytteplan_oppsummering(
     st.dataframe(
         data,
         column_config={
-            "Periode": st.column_config.TextColumn(
-                "Periode", width="small"
-            ),
-            "På banen": st.column_config.TextColumn(
-                "På banen", width="large"
-            ),
-            "Bytter": st.column_config.TextColumn(
-                "Bytter", width="medium"
-            ),
-            "På benken": st.column_config.TextColumn(
-                "På benken", width="medium"
-            ),
+            "Periode": st.column_config.TextColumn("Periode", width="small"),
+            "På banen": st.column_config.TextColumn("På banen", width="large"),
+            "Bytter": st.column_config.TextColumn("Bytter", width="medium"),
+            "På benken": st.column_config.TextColumn("På benken", width="medium"),
         },
         hide_index=True,
         height=800,
@@ -591,7 +592,7 @@ def vis_bytteplan_side(app_handler: AppHandler) -> None:
             "Beregn periodelengde: lengde=%d, perioder=%d, tid=%f",
             ny_kamplengde,
             nytt_antall_perioder,
-            periode_lengde
+            periode_lengde,
         )
         perioder = [int(i * periode_lengde) for i in range(nytt_antall_perioder)]
 
