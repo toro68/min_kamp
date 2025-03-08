@@ -338,7 +338,21 @@ def lag_fotballbane_html(
                     pointer-events: none;
                     z-index: 1003;
                 }}
+                .nedlasting-knapp {{
+                    margin-top: 10px;
+                    padding: 8px 16px;
+                    background-color: #1565C0;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                }}
+                .nedlasting-knapp:hover {{
+                    background-color: #0D47A1;
+                }}
             </style>
+            <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
             <script>
             function getSpillerPosisjoner() {{
                 const spillere = document.querySelectorAll('.spiller:not(.paa-benken)');
@@ -500,6 +514,36 @@ def lag_fotballbane_html(
                     document.removeEventListener('touchend', stopDrag);
                 }}
             }});
+
+            function lastNedSomPNG() {{
+                const bane = document.querySelector('.fotballbane');
+                
+                html2canvas(bane, {{
+                    backgroundColor: '#2e8b57',
+                    scale: 2,
+                    logging: true,
+                    useCORS: true
+                }}).then(canvas => {{
+                    // Konverter canvas til PNG
+                    const image = canvas.toDataURL('image/png');
+                    
+                    // Opprett en nedlastingslenke
+                    const link = document.createElement('a');
+                    link.download = 'fotballbane.png';
+                    link.href = image;
+                    
+                    // Legg til lenken i dokumentet
+                    document.body.appendChild(link);
+                    
+                    // Klikk på lenken for å starte nedlastingen
+                    link.click();
+                    
+                    // Fjern lenken
+                    document.body.removeChild(link);
+                }}).catch(error => {{
+                    console.error('Feil ved generering av PNG:', error);
+                }});
+            }}
             </script>
         </head>
         <body>
@@ -538,6 +582,10 @@ def lag_fotballbane_html(
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
                 {15}
+            </div>
+            <!-- Legg til nedlastingsknapp -->
+            <div style="text-align: center; margin-top: 10px;">
+                <button class="nedlasting-knapp" onclick="lastNedSomPNG()">Last ned som PNG</button>
             </div>
         </body>
         </html>
