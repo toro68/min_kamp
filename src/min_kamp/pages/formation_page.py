@@ -1172,7 +1172,7 @@ def _hent_kampinnstillinger(
         with app_handler._database_handler.connection() as conn:
             cursor = conn.cursor()
 
-            # Hent innstillinger fra databasen
+            # Hent innstillinger fra databasen med prioritering
             sql = """
                 SELECT nokkel, verdi
                 FROM app_innstillinger
@@ -1182,19 +1182,41 @@ def _hent_kampinnstillinger(
                     'antall_perioder',
                     'antall_paa_banen'
                 )
-                ORDER BY kamp_id DESC
+                ORDER BY
+                    CASE
+                        WHEN kamp_id = ? THEN 1
+                        WHEN bruker_id = ? THEN 2
+                        ELSE 3
+                    END,
+                    sist_oppdatert DESC
             """
-            cursor.execute(sql, (bruker_id, kamp_id))
+            cursor.execute(sql, (bruker_id, kamp_id, kamp_id, bruker_id))
 
-            # Konverter resultater til dict
-            innstillinger = {}
+            # Definer standard verdier
+            kamplengde = 70  # Standard 70 minutter
+            antall_perioder = 7  # Standard 7 perioder (10 min hver)
+            antall_paa_banen = 7  # Standard 7 spillere på banen
+
+            # Lag en dictionary for å holde styr på innstillinger
+            innstillinger_dict = {}
+
+            # Behandle innstillinger med prioritet
             for row in cursor.fetchall():
-                innstillinger[row[0]] = row[1]
+                nokkel = row[0]
+                verdi = row[1]
 
-            # Hent verdier med standardverdier
-            kamplengde = int(innstillinger.get("kamplengde", 70))
-            antall_perioder = int(innstillinger.get("antall_perioder", 7))
-            antall_paa_banen = int(innstillinger.get("antall_paa_banen", 7))
+                # Kun oppdater hvis nøkkelen ikke allerede er satt
+                if nokkel not in innstillinger_dict:
+                    innstillinger_dict[nokkel] = verdi
+                    logger.debug("Valgt inst: key=%s, val=%s", nokkel, verdi)
+
+            # Oppdater verdier fra databasen
+            if "kamplengde" in innstillinger_dict:
+                kamplengde = int(innstillinger_dict["kamplengde"])
+            if "antall_perioder" in innstillinger_dict:
+                antall_perioder = int(innstillinger_dict["antall_perioder"])
+            if "antall_paa_banen" in innstillinger_dict:
+                antall_paa_banen = int(innstillinger_dict["antall_paa_banen"])
 
             # Logg innstillingene
             logger.info(
