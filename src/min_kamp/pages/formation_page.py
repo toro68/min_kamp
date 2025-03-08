@@ -289,12 +289,13 @@ def lag_fotballbane_html(
     periode_id_value = periode_id if periode_id is not None else 0
 
     html = """
-        <!DOCTYPE html>
-        <html>
+    <!DOCTYPE html>
+    <html>
         <head>
             <meta charset="utf-8">
+            <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
             <style>
-                .fotballbane {{
+                .fotballbane {
                     position: relative;
                     overflow: visible !important;
                     touch-action: none;
@@ -302,8 +303,8 @@ def lag_fotballbane_html(
                     -webkit-user-select: none;
                     background-color: #2e8b57;
                     z-index: 1;
-                }}
-                .spiller {{
+                }
+                .spiller {
                     position: absolute;
                     width: {0}px;
                     height: {0}px;
@@ -321,37 +322,50 @@ def lag_fotballbane_html(
                     font-weight: bold;
                     z-index: 1000;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                }}
-                .spiller:hover {{
+                }
+                .spiller:hover {
                     transform: scale(1.1);
                     box-shadow: 0 4px 8px rgba(0,0,0,0.3);
                     z-index: 1001;
-                }}
-                .spiller:active {{
+                }
+                .spiller:active {
                     cursor: grabbing;
                     z-index: 1002;
-                }}
-                .dragging {{
+                }
+                .dragging {
                     opacity: 0.8;
                     transform: scale(1.1);
                     box-shadow: 0 8px 16px rgba(0,0,0,0.4);
                     pointer-events: none;
                     z-index: 1003;
-                }}
+                }
+                .nedlasting-knapp {
+                    margin-top: 10px;
+                    padding: 8px 16px;
+                    background-color: #1565C0;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                }
+                .nedlasting-knapp:hover {
+                    background-color: #0D47A1;
+                }
             </style>
             <script>
-            function getSpillerPosisjoner() {{
+            function getSpillerPosisjoner() {
                 const spillere = document.querySelectorAll('.spiller:not(.paa-benken)');
-                const posisjoner = {{}};
+                const posisjoner = {};
                 const bane = document.querySelector('.fotballbane');
                 const baneRect = bane.getBoundingClientRect();
-                const margin = {1};
+                const margin = 50;
 
                 // Beregn det spillbare området
                 const spillbartWidth = baneRect.width - 2 * margin;
                 const spillbartHeight = baneRect.height - 2 * margin;
 
-                spillere.forEach(spiller => {{
+                spillere.forEach(spiller => {
                     const rect = spiller.getBoundingClientRect();
                     const spillerId = spiller.getAttribute('data-spiller-id');
 
@@ -367,16 +381,16 @@ def lag_fotballbane_html(
                     const x = (relativeX / spillbartWidth) * 100;
                     const y = (relativeY / spillbartHeight) * 100;
 
-                    posisjoner[spillerId] = {{
+                    posisjoner[spillerId] = {
                         x: Math.max(0, Math.min(100, x)).toFixed(2),
                         y: Math.max(0, Math.min(100, y)).toFixed(2)
-                    }};
-                }});
+                    };
+                });
 
                 return posisjoner;
-            }}
+            }
 
-            function lagrePosisjoner() {{
+            function lagrePosisjoner() {
                 const posisjoner = getSpillerPosisjoner();
                 const bane = document.querySelector('.fotballbane');
                 const periode_id = bane.getAttribute('data-periode-id');
@@ -384,18 +398,18 @@ def lag_fotballbane_html(
                 console.log('Lagrer posisjoner for periode:', periode_id, 'posisjoner:', posisjoner);
 
                 // Forbered data for sending
-                const data = {{
+                const data = {
                     periode_id: periode_id,
                     posisjoner: posisjoner,
                     timestamp: new Date().getTime() // Legg til timestamp for å unngå caching
-                }};
+                };
 
-                try {{
+                try {
                     // Metode 1: Send via Streamlit Component API
-                    window.parent.postMessage({{
+                    window.parent.postMessage({
                         type: 'streamlit:setComponentValue',
                         data: data
-                    }}, '*');
+                    }, '*');
                     console.log('Data sendt via Streamlit Component API');
                     
                     // Metode 2: Send via URL-parameter (backup)
@@ -404,27 +418,59 @@ def lag_fotballbane_html(
                     
                     // Oppdater URL uten å refreshe siden
                     const url = window.parent.location.pathname + '?' + searchParams.toString();
-                    window.parent.history.pushState({{}}, '', url);
+                    window.parent.history.pushState({}, '', url);
                     console.log('URL oppdatert med data');
                     
                     // Metode 3: Bruk fetch API som ekstra backup
-                    fetch(url, {{
+                    fetch(url, {
                         method: 'GET',
-                        headers: {{
+                        headers: {
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest'
-                        }}
-                    }}).then(response => {{
+                        }
+                    }).then(response => {
                         console.log('Posisjoner sendt til server via fetch');
-                    }}).catch(error => {{
+                    }).catch(error => {
                         console.error('Feil ved sending av posisjoner via fetch:', error);
-                    }});
-                }} catch (error) {{
+                    });
+                } catch (error) {
                     console.error('Feil ved lagring av posisjoner:', error);
-                }}
-            }}
+                }
+            }
+            
+            function lastNedSomPNG() {
+                // Skjul nedlastingsknappen midlertidig
+                const knapp = document.querySelector('.nedlasting-knapp');
+                knapp.style.display = 'none';
+                
+                // Hent fotballbanen
+                const bane = document.querySelector('.fotballbane');
+                
+                // Bruk html2canvas for å konvertere banen til et bilde
+                html2canvas(bane, {
+                    backgroundColor: '#2e8b57',
+                    scale: 2, // Høyere oppløsning
+                    logging: false,
+                    useCORS: true
+                }).then(function(canvas) {
+                    // Opprett en midlertidig lenke for nedlasting
+                    const link = document.createElement('a');
+                    link.download = 'banekart.png';
+                    link.href = canvas.toDataURL('image/png');
+                    document.body.appendChild(link);
+                    
+                    // Klikk på lenken for å starte nedlastingen
+                    link.click();
+                    
+                    // Fjern lenken
+                    document.body.removeChild(link);
+                    
+                    // Vis knappen igjen
+                    knapp.style.display = 'block';
+                });
+            }
 
-            document.addEventListener('DOMContentLoaded', function() {{
+            document.addEventListener('DOMContentLoaded', function() {
                 const spillere = document.querySelectorAll('.spiller');
                 let aktivSpiller = null;
                 let startX = 0;
@@ -432,74 +478,76 @@ def lag_fotballbane_html(
                 let offsetX = 0;
                 let offsetY = 0;
 
-                spillere.forEach(spiller => {{
+                spillere.forEach(spiller => {
                     spiller.addEventListener('mousedown', startDrag);
                     spiller.addEventListener('touchstart', startDrag);
-                }});
+                });
 
-                function startDrag(e) {{
-                    if (e.type === 'touchstart') {{
+                function startDrag(e) {
+                    if (e.type === 'touchstart') {
                         // For touch-hendelser, forhindre bare scrolling
                         e.preventDefault();
-                    }}
+                    }
                     aktivSpiller = this;
                     aktivSpiller.classList.add('dragging');
 
-                    if (e.type === 'mousedown') {{
+                    if (e.type === 'mousedown') {
                         startX = e.clientX;
                         startY = e.clientY;
-                    }} else {{
+                    } else {
                         startX = e.touches[0].clientX;
                         startY = e.touches[0].clientY;
-                    }}
+                    }
 
                     const style = window.getComputedStyle(aktivSpiller);
                     offsetX = parseFloat(style.left) || 0;
                     offsetY = parseFloat(style.top) || 0;
 
-                    document.addEventListener('mousemove', drag, {{ passive: false }});
-                    document.addEventListener('touchmove', drag, {{ passive: false }});
+                    document.addEventListener('mousemove', drag, { passive: false });
+                    document.addEventListener('touchmove', drag, { passive: false });
                     document.addEventListener('mouseup', stopDrag);
                     document.addEventListener('touchend', stopDrag);
-                }}
+                }
 
-                function drag(e) {{
+                function drag(e) {
                     if (!aktivSpiller) return;
                     
                     // Forhindre standard berøringshendelser under drag
-                    if (e.cancelable) {{
+                    if (e.cancelable) {
                         e.preventDefault();
-                    }}
+                    }
 
                     let clientX, clientY;
-                    if (e.type === 'mousemove') {{
+                    if (e.type === 'mousemove') {
                         clientX = e.clientX;
                         clientY = e.clientY;
-                    }} else {{
+                    } else {
                         clientX = e.touches[0].clientX;
                         clientY = e.touches[0].clientY;
-                    }}
+                    }
 
                     const dx = clientX - startX;
                     const dy = clientY - startY;
 
-                    aktivSpiller.style.left = `${{offsetX + dx}}px`;
-                    aktivSpiller.style.top = `${{offsetY + dy}}px`;
-                }}
+                    aktivSpiller.style.left = offsetX + dx + 'px';
+                    aktivSpiller.style.top = offsetY + dy + 'px';
+                }
 
-                function stopDrag() {{
-                    if (aktivSpiller) {{
+                function stopDrag() {
+                    if (aktivSpiller) {
                         aktivSpiller.classList.remove('dragging');
                         aktivSpiller = null;
-                        lagrePosisjoner();
-                    }}
 
-                    document.removeEventListener('mousemove', drag);
-                    document.removeEventListener('touchmove', drag);
-                    document.removeEventListener('mouseup', stopDrag);
-                    document.removeEventListener('touchend', stopDrag);
-                }}
-            }});
+                        // Lagre posisjoner etter drag
+                        lagrePosisjoner();
+
+                        document.removeEventListener('mousemove', drag);
+                        document.removeEventListener('touchmove', drag);
+                        document.removeEventListener('mouseup', stopDrag);
+                        document.removeEventListener('touchend', stopDrag);
+                    }
+                }
+            });
             </script>
         </head>
         <body>
@@ -538,6 +586,11 @@ def lag_fotballbane_html(
                           fill="none" stroke="white" stroke-width="2"/>
                 </svg>
                 {15}
+            </div>
+            
+            <!-- Legg til nedlastingsknapp -->
+            <div style="text-align: center; margin-top: 10px;">
+                <button class="nedlasting-knapp" onclick="lastNedSomPNG()">Last ned som PNG</button>
             </div>
         </body>
         </html>
