@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 # Gjør pdfkit-importen betinget
 try:
     import pdfkit
+
     HAS_PDFKIT = True
 except ImportError:
     HAS_PDFKIT = False
@@ -411,16 +412,16 @@ def lag_fotballbane_html(
                         data: data
                     }}, '*');
                     console.log('Data sendt via Streamlit Component API');
-                    
+
                     // Metode 2: Send via URL-parameter (backup)
                     const searchParams = new URLSearchParams(window.parent.location.search);
                     searchParams.set('banekart_data', JSON.stringify(data));
-                    
+
                     // Oppdater URL uten å refreshe siden
                     const url = window.parent.location.pathname + '?' + searchParams.toString();
                     window.parent.history.pushState({{}}, '', url);
                     console.log('URL oppdatert med data');
-                    
+
                     // Metode 3: Bruk fetch API som ekstra backup
                     fetch(url, {{
                         method: 'GET',
@@ -479,7 +480,7 @@ def lag_fotballbane_html(
 
                 function drag(e) {{
                     if (!aktivSpiller) return;
-                    
+
                     // Forhindre standard berøringshendelser under drag
                     if (e.cancelable) {{
                         e.preventDefault();
@@ -517,7 +518,7 @@ def lag_fotballbane_html(
 
             function lastNedSomPNG() {{
                 const bane = document.querySelector('.fotballbane');
-                
+
                 html2canvas(bane, {{
                     backgroundColor: '#2e8b57',
                     scale: 2,
@@ -526,18 +527,18 @@ def lag_fotballbane_html(
                 }}).then(canvas => {{
                     // Konverter canvas til PNG
                     const image = canvas.toDataURL('image/png');
-                    
+
                     // Opprett en nedlastingslenke
                     const link = document.createElement('a');
                     link.download = 'fotballbane.png';
                     link.href = image;
-                    
+
                     // Legg til lenken i dokumentet
                     document.body.appendChild(link);
-                    
+
                     // Klikk på lenken for å starte nedlastingen
                     link.click();
-                    
+
                     // Fjern lenken
                     document.body.removeChild(link);
                 }}).catch(error => {{
@@ -1567,7 +1568,7 @@ def vis_periodevis_oversikt(app_handler: AppHandler, kamp_id: int) -> None:
                 if periode["id"] == aktiv_periode:
                     st.query_params["periode_id"] = str(periode_id)
 
-                components.html(fotballbane, height=1000)
+                components.html(fotballbane, height=1100)
 
 
 def sett_opp_startoppstilling(app_handler: AppHandler, kamp_id: int) -> bool:
