@@ -10,7 +10,15 @@ import logging
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
-import pdfkit
+# Gjør pdfkit-importen betinget
+try:
+    import pdfkit
+    HAS_PDFKIT = True
+except ImportError:
+    HAS_PDFKIT = False
+    print("pdfkit er ikke installert. PDF-eksport vil ikke være tilgjengelig.")
+    print("Installer med: pip install pdfkit")
+
 import streamlit as st
 import streamlit.components.v1 as components
 from min_kamp.db.auth.auth_views import check_auth
