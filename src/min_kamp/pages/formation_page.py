@@ -293,6 +293,7 @@ def lag_fotballbane_html(
                     user-select: none;
                     -webkit-user-select: none;
                     background-color: #2e8b57;
+                    z-index: 1;
                 }}
                 .spiller {{
                     position: absolute;
@@ -306,22 +307,28 @@ def lag_fotballbane_html(
                     justify-content: center;
                     cursor: grab;
                     user-select: none;
+                    -webkit-user-select: none;
+                    touch-action: none;
                     font-size: 16px;
                     font-weight: bold;
                     z-index: 1000;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                 }}
                 .spiller:hover {{
                     transform: scale(1.1);
                     box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                    z-index: 1001;
                 }}
                 .spiller:active {{
                     cursor: grabbing;
+                    z-index: 1002;
                 }}
                 .dragging {{
                     opacity: 0.8;
                     transform: scale(1.1);
                     box-shadow: 0 8px 16px rgba(0,0,0,0.4);
                     pointer-events: none;
+                    z-index: 1003;
                 }}
             </style>
             <script>
@@ -366,41 +373,47 @@ def lag_fotballbane_html(
                 const bane = document.querySelector('.fotballbane');
                 const periode_id = bane.getAttribute('data-periode-id');
 
-                console.log('Lag posisjon id:', periode_id, 'pos:', posisjoner);
+                console.log('Lagrer posisjoner for periode:', periode_id, 'posisjoner:', posisjoner);
 
-                // Send data til Streamlit via URL-parameter
+                // Forbered data for sending
                 const data = {{
                     periode_id: periode_id,
-                    posisjoner: posisjoner
+                    posisjoner: posisjoner,
+                    timestamp: new Date().getTime() // Legg til timestamp for å unngå caching
                 }};
 
-                // Oppdater URL med data, men ikke trigger en full side-refresh
-                const searchParams = new URLSearchParams(window.parent.location.search);
-                searchParams.set('banekart_data', JSON.stringify(data));
-
-                // Bruk fetch API for å sende data til serveren uten å refreshe siden
-                let url = window.parent.location.pathname+'?'+searchParams.toString();
-                fetch(url,{{
-                    method: 'GET',
-                    headers: {{
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }}
-                }}).then(response => {{
-                    console.log('Posisjoner sendt til server');
-                }}).catch(error => {{
-                    console.error('Feil ved sending av posisjoner:', error);
-                }});
-
-                // Oppdater URL uten å refreshe siden
-                let url = window.parent.location.pathname+'?'+searchParams.toString();
-                window.parent.history.pushState({{}}, '', url);
-
-                // Send melding til Streamlit uten å trigge full rerun
-                window.parent.postMessage({{
-                    type: 'streamlit:setComponentValue',
-                    data: data
-                }}, '*');
+                try {{
+                    // Metode 1: Send via Streamlit Component API
+                    window.parent.postMessage({{
+                        type: 'streamlit:setComponentValue',
+                        data: data
+                    }}, '*');
+                    console.log('Data sendt via Streamlit Component API');
+                    
+                    // Metode 2: Send via URL-parameter (backup)
+                    const searchParams = new URLSearchParams(window.parent.location.search);
+                    searchParams.set('banekart_data', JSON.stringify(data));
+                    
+                    // Oppdater URL uten å refreshe siden
+                    const url = window.parent.location.pathname + '?' + searchParams.toString();
+                    window.parent.history.pushState({{}}, '', url);
+                    console.log('URL oppdatert med data');
+                    
+                    // Metode 3: Bruk fetch API som ekstra backup
+                    fetch(url, {{
+                        method: 'GET',
+                        headers: {{
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }}
+                    }}).then(response => {{
+                        console.log('Posisjoner sendt til server via fetch');
+                    }}).catch(error => {{
+                        console.error('Feil ved sending av posisjoner via fetch:', error);
+                    }});
+                }} catch (error) {{
+                    console.error('Feil ved lagring av posisjoner:', error);
+                }}
             }}
 
             document.addEventListener('DOMContentLoaded', function() {{
@@ -417,7 +430,10 @@ def lag_fotballbane_html(
                 }});
 
                 function startDrag(e) {{
-                    e.preventDefault();
+                    if (e.type === 'touchstart') {{
+                        // For touch-hendelser, forhindre bare scrolling
+                        e.preventDefault();
+                    }}
                     aktivSpiller = this;
                     aktivSpiller.classList.add('dragging');
 
@@ -433,14 +449,19 @@ def lag_fotballbane_html(
                     offsetX = parseFloat(style.left) || 0;
                     offsetY = parseFloat(style.top) || 0;
 
-                    document.addEventListener('mousemove', drag);
-                    document.addEventListener('touchmove', drag);
+                    document.addEventListener('mousemove', drag, {{ passive: false }});
+                    document.addEventListener('touchmove', drag, {{ passive: false }});
                     document.addEventListener('mouseup', stopDrag);
                     document.addEventListener('touchend', stopDrag);
                 }}
 
                 function drag(e) {{
                     if (!aktivSpiller) return;
+                    
+                    // Forhindre standard berøringshendelser under drag
+                    if (e.cancelable) {{
+                        e.preventDefault();
+                    }}
 
                     let clientX, clientY;
                     if (e.type === 'mousemove') {{
@@ -1639,9 +1660,9 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                         )
                         if success:
                             logger.info("Posisjoner lagret for periode %d", periode_id)
-                            st.success("Posisjoner lagret")
-                            # Fjern data fra session state
+                            # Fjern data fra session state for å unngå gjentatt lagring
                             del st.session_state["component_value"]
+                            # Ikke vis success-melding for å unngå flimring
                         else:
                             logger.error(
                                 "Kunne ikke lagre posisjoner for periode %d", periode_id
@@ -1649,9 +1670,16 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                             st.error("Kunne ikke lagre posisjoner")
                     else:
                         logger.warning("Ingen posisjoner å lagre")
+                        # Fjern data fra session state for å unngå gjentatt forsøk
+                        if "component_value" in st.session_state:
+                            del st.session_state["component_value"]
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data: %s", str(e))
+                logger.exception("Full feilmelding:")
                 st.error("Kunne ikke håndtere banekart data")
+                # Fjern data fra session state for å unngå gjentatt feil
+                if "component_value" in st.session_state:
+                    del st.session_state["component_value"]
 
         # Håndter banekart data fra URL (for bakoverkompatibilitet)
         banekart_data_str = st.query_params.get("banekart_data")
@@ -1672,14 +1700,27 @@ def vis_formasjon_side(app_handler: AppHandler) -> None:
                             )
                             if success:
                                 logger.info("Posisjoner lagret fra URL")
+                                # Fjern data fra URL for å unngå gjentatt lagring
+                                st.query_params.pop("banekart_data", None)
+                                # Ikke vis success-melding for å unngå flimring
                             else:
                                 logger.error("Kunne ikke lagre posisjoner fra URL")
+                                st.error("Kunne ikke lagre posisjoner")
+                                # Fjern data fra URL for å unngå gjentatt forsøk
+                                st.query_params.pop("banekart_data", None)
                         else:
                             logger.warning("Ingen posisjoner å lagre fra URL")
+                            # Fjern data fra URL for å unngå gjentatt forsøk
+                            st.query_params.pop("banekart_data", None)
                     except ValueError as e:
                         logger.error("Ugyldig periode_id fra URL: %s", str(e))
+                        # Fjern data fra URL for å unngå gjentatt feil
+                        st.query_params.pop("banekart_data", None)
             except Exception as e:
                 logger.error("Feil ved håndtering av banekart data fra URL: %s", str(e))
+                logger.exception("Full feilmelding:")
+                # Fjern data fra URL for å unngå gjentatt feil
+                st.query_params.pop("banekart_data", None)
 
         # Hent tilgjengelige formasjoner
         try:
